@@ -8,6 +8,111 @@ use mkl_sys::{MklInt, _MKL_DSS_HANDLE_t, MKL_DSS_DEFAULTS, MKL_DSS_ZERO_BASED_IN
 use std::ptr::{null_mut, null};
 use std::ffi::c_void;
 
+// MKL constants
+use mkl_sys::{
+    MKL_DSS_COL_ERR,
+    MKL_DSS_CONJUGATE_SOLVE,
+    MKL_DSS_DIAG_ERR,
+    MKL_DSS_FAILURE,
+    MKL_DSS_GET_ORDER,
+    MKL_DSS_HERMITIAN_INDEFINITE,
+    MKL_DSS_HERMITIAN_POSITIVE_DEFINITE,
+    MKL_DSS_I32BIT_ERR,
+    MKL_DSS_INVALID_OPTION,
+    MKL_DSS_METIS_OPENMP_ORDER,
+    MKL_DSS_METIS_ORDER,
+    MKL_DSS_MSG_LVL_DEBUG,
+    MKL_DSS_MSG_LVL_ERR,
+    MKL_DSS_MSG_LVL_ERROR,
+    MKL_DSS_MSG_LVL_FATAL,
+    MKL_DSS_MSG_LVL_INFO,
+    MKL_DSS_MSG_LVL_SUCCESS,
+    MKL_DSS_MSG_LVL_WARNING,
+    MKL_DSS_MY_ORDER,
+    MKL_DSS_NON_SYMMETRIC_COMPLEX,
+    MKL_DSS_NOT_SQUARE,
+    MKL_DSS_OOC_MEM_ERR,
+    MKL_DSS_OOC_OC_ERR,
+    MKL_DSS_OOC_RW_ERR,
+    MKL_DSS_OOC_STRONG,
+    MKL_DSS_OOC_VARIABLE,
+    MKL_DSS_OPTION1_ORDER,
+    MKL_DSS_OPTION_CONFLICT,
+    MKL_DSS_OUT_OF_MEMORY,
+    MKL_DSS_PREORDER_ERR,
+    MKL_DSS_REFINEMENT_OFF,
+    MKL_DSS_REFINEMENT_ON,
+    MKL_DSS_REORDER1_ERR,
+    MKL_DSS_REORDER_ERR,
+    MKL_DSS_ROW_ERR,
+    MKL_DSS_SINGLE_PRECISION,
+    MKL_DSS_STATE_ERR,
+    MKL_DSS_STATISTICS_INVALID_MATRIX,
+    MKL_DSS_STATISTICS_INVALID_STATE,
+    MKL_DSS_STATISTICS_INVALID_STRING,
+    MKL_DSS_STRUCTURE_ERR,
+    MKL_DSS_SUCCESS,
+    MKL_DSS_SYMMETRIC_COMPLEX,
+    MKL_DSS_SYMMETRIC_STRUCTURE_COMPLEX,
+    MKL_DSS_TERM_LVL_DEBUG,
+    MKL_DSS_TERM_LVL_ERR,
+    MKL_DSS_TERM_LVL_ERROR,
+    MKL_DSS_TERM_LVL_FATAL,
+    MKL_DSS_TERM_LVL_INFO,
+    MKL_DSS_TERM_LVL_SUCCESS,
+    MKL_DSS_TERM_LVL_WARNING,
+    MKL_DSS_TOO_FEW_VALUES,
+    MKL_DSS_TOO_MANY_VALUES,
+    MKL_DSS_TRANSPOSE_SOLVE,
+    MKL_DSS_VALUES_ERR,
+    MKL_DSS_ZERO_PIVOT
+};
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum DssError {
+    InvalidOption,
+    OutOfMemory,
+    MsgLvlErr,
+    TermLvlErr,
+    StateErr,
+    RowErr,
+    ColErr,
+    NotSquare,
+    TooFewValues,
+    TooManyValues,
+    ReorderErr,
+    Reorder1Err,
+    I32BitErr,
+    Failure,
+    OptionConflict,
+    OocMemErr,
+    OocOcErr,
+    OocRwErr,
+    DiagErr,
+    StatisticsInvalidMatrix,
+    StatisticsInvalidState,
+    StatisticsInvalidString,
+
+    /// Special error that does not exist in Intel MKL.
+    ///
+    /// This error is used when we encounter an unknown return code. This could for example
+    /// happen if a new version of Intel MKL adds more return codes and this crate has not
+    /// been updated to take that into account.
+    UnknownError
+}
+
+impl DssError {
+    /// Construct a `DssError` from an MKL return code.
+    ///
+    /// This should cover every return code possible.
+    fn from_return_code(code: MklInt) -> Self {
+        match code {
+            MKL_DSS_INVALID_OPTION => Self::InvalidOption,
+            _ => Self::UnknownError
+        }
+    }
+}
+
 /// A wrapper around _MKL_DSS_HANDLE_t.
 ///
 /// This is not exported from the library, but instead only used to simplify correct
@@ -18,17 +123,16 @@ struct Handle {
 }
 
 impl Handle {
-    fn create(options: MklInt) -> Self {
+    fn create(options: MklInt) -> Result<Self, DssError> {
         let mut handle = null_mut();
 
         // TODO: Handle errors
-        unsafe {
-            let error = dss_create_(&mut handle, &options);
-            if error != 0 {
-                eprintln!("dss_create error: {}", error);
-            }
+        let error = unsafe { dss_create_(&mut handle, &options) };
+        if error == MKL_DSS_SUCCESS as MklInt {
+            Ok(Self { handle })
+        } else {
+            Err(DssError::from_return_code(error))
         }
-        Self { handle }
     }
 }
 
@@ -120,14 +224,14 @@ impl<T> SymbolicFactorization<T>
 where
     T: SupportedScalar
 {
-    pub fn from_csr(row_ptr: &[MklInt], columns: &[MklInt], structure: MatrixStructure) -> Self {
+    pub fn try_from_csr(row_ptr: &[MklInt], columns: &[MklInt], structure: MatrixStructure) -> Result<Self, DssError> {
         check_csr(row_ptr, columns);
 
         // TODO: Result instead of panic?
         assert!(row_ptr.len() > 0);
 
         let create_opts = (MKL_DSS_DEFAULTS + MKL_DSS_ZERO_BASED_INDEXING) as MklInt;
-        let mut handle = Handle::create(create_opts);
+        let mut handle = Handle::create(create_opts)?;
 
         let define_opts = structure.to_mkl_opt();
 
@@ -160,12 +264,12 @@ where
             }
         }
 
-        Self {
+        Ok(Self {
             handle,
             marker: PhantomData,
             num_rows,
             nnz
-        }
+        })
     }
 
     pub fn factor(self, values: &[T], definiteness: MatrixDefiniteness) -> NumericalFactorization<T> {
