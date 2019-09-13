@@ -15,9 +15,6 @@ use std::ffi::c_void;
 /// and numerical factorization.
 struct Handle {
     handle: _MKL_DSS_HANDLE_t,
-    /// Currently we store the options used to construct the handle,
-    /// and use the same options when deleting it. TODO: Is this correct?
-    opts: MklInt
 }
 
 impl Handle {
@@ -31,10 +28,7 @@ impl Handle {
                 eprintln!("dss_create error: {}", error);
             }
         }
-        Self {
-            handle,
-            opts: options
-        }
+        Self { handle }
     }
 }
 
@@ -53,6 +47,7 @@ impl Drop for Handle {
 }
 
 // TODO: Support complex numbers
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum MatrixStructure {
     StructurallySymmetric,
     Symmetric,
@@ -70,6 +65,7 @@ impl MatrixStructure {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum MatrixDefiniteness {
     PositiveDefinite,
     Indefinite
@@ -87,7 +83,7 @@ impl MatrixDefiniteness {
 
 
 
-pub fn check_csr(row_ptr: &[MklInt], columns: &[MklInt]) {
+pub fn check_csr(row_ptr: &[MklInt], _columns: &[MklInt]) {
     assert!(row_ptr.len() > 0, "row_ptr must always have positive length.");
 
     // TODO: Turn into Result and return Result in `from_csr`
