@@ -111,7 +111,9 @@ unsafe impl SupportedScalar for f64 {}
 
 pub struct SymbolicFactorization<T> {
     handle: Handle,
-    marker: PhantomData<T>
+    marker: PhantomData<T>,
+    num_rows: usize,
+    nnz: usize
 }
 
 impl<T> SymbolicFactorization<T>
@@ -119,14 +121,18 @@ where
     T: SupportedScalar
 {
     pub fn from_csr(row_ptr: &[MklInt], columns: &[MklInt], structure: MatrixStructure) -> Self {
+        check_csr(row_ptr, columns);
+
+        // TODO: Result instead of panic?
+        assert!(row_ptr.len() > 0);
+
         let create_opts = (MKL_DSS_DEFAULTS + MKL_DSS_ZERO_BASED_INDEXING) as MklInt;
         let mut handle = Handle::create(create_opts);
 
         let define_opts = structure.to_mkl_opt();
 
-        let nnz = columns.len() as MklInt;
-
-        let num_rows = row_ptr.len() as MklInt - 1;
+        let nnz = columns.len();
+        let num_rows = row_ptr.len() - 1;
         let num_cols = num_rows;
 
         unsafe {
@@ -134,10 +140,10 @@ where
             let error = dss_define_structure_(&mut handle.handle,
                                   &define_opts,
                                   row_ptr.as_ptr(),
-                                  &num_rows,
-                                  &num_cols,
+                                  &(num_rows as MklInt),
+                                  &(num_cols as MklInt),
                                   columns.as_ptr(),
-                                  &nnz
+                                  &(nnz as MklInt)
             );
             if error != 0 {
                 eprintln!("dss_define_structure_ error: {}", error);
@@ -156,11 +162,16 @@ where
 
         Self {
             handle,
-            marker: PhantomData
+            marker: PhantomData,
+            num_rows,
+            nnz
         }
     }
 
     pub fn factor(mut self, values: &[T], definiteness: MatrixDefiniteness) -> NumericalFactorization<T> {
+        // TODO: Part of error?
+        assert_eq!(values.len(), self.nnz);
+
         let opts = definiteness.to_mkl_opt();
 
         // TODO: Must save e.g. size of sparsity pattern earlier in the process
@@ -179,14 +190,16 @@ where
 
         NumericalFactorization {
             handle: self.handle,
-            marker: PhantomData
+            marker: PhantomData,
+            num_rows: self.num_rows
         }
     }
 }
 
 pub struct NumericalFactorization<T> {
     handle: Handle,
-    marker: PhantomData<T>
+    marker: PhantomData<T>,
+    num_rows: usize,
 }
 
 impl<T> NumericalFactorization<T>
@@ -200,17 +213,19 @@ where
     // Unless an error somehow invalidates the handle? Not clear...
     // Note: same for diagonal/backward
     pub fn forward_substitute_into(&mut self, solution: &mut [T], rhs: &[T]) {
-        // TODO: Must save size to determine that length of the given values are valid,
-        // otherwise we may invoke UB!
+        let num_rhs = rhs.len() / self.num_rows;
 
-        // TODO: Determine number of RHS from length of data
-        let num_rhs = 1;
+        // TODO: Make part of error?
+        assert_eq!(rhs.len() % self.num_rows, 0,
+                   "Number of entries in RHS must be divisible by system size.");
+        assert_eq!(solution.len(), rhs.len());
+
 
         // TODO: Error handling
         let error = unsafe { dss_solve_real_(&mut self.handle.handle,
                                     &(MKL_DSS_FORWARD_SOLVE as MklInt),
                                     rhs.as_ptr() as *const c_void,
-                                    &num_rhs,
+                                    &(num_rhs as MklInt),
                                     solution.as_mut_ptr() as *mut c_void) };
         if error != 0 {
             eprintln!("dss_factor_real_ error (forward): {}", error);
@@ -218,16 +233,17 @@ where
     }
 
     pub fn diagonal_substitute_into(&mut self, solution: &mut [T], rhs: &[T]) {
-        // TODO: Must save size to determine that length of the given values are valid,
-        // otherwise we may invoke UB!
+        let num_rhs = rhs.len() / self.num_rows;
 
-        // TODO: Determine number of RHS from length of data
-        let num_rhs = 1;
+        // TODO: Make part of error?
+        assert_eq!(rhs.len() % self.num_rows, 0,
+                   "Number of entries in RHS must be divisible by system size.");
+        assert_eq!(solution.len(), rhs.len());
 
         let error = unsafe { dss_solve_real_(&mut self.handle.handle,
                                     &(MKL_DSS_DIAGONAL_SOLVE as MklInt),
                                     rhs.as_ptr() as *const c_void,
-                                    &num_rhs,
+                                    &(num_rhs as MklInt),
                                     solution.as_mut_ptr() as *mut c_void) };
 
         if error != 0 {
@@ -236,16 +252,17 @@ where
     }
 
     pub fn backward_substitute_into(&mut self, solution: &mut [T], rhs: &[T]) {
-        // TODO: Must save size to determine that length of the given values are valid,
-        // otherwise we may invoke UB!
+        let num_rhs = rhs.len() / self.num_rows;
 
-        // TODO: Determine number of RHS from length of data
-        let num_rhs = 1;
+        // TODO: Make part of error?
+        assert_eq!(rhs.len() % self.num_rows, 0,
+                   "Number of entries in RHS must be divisible by system size.");
+        assert_eq!(solution.len(), rhs.len());
 
         let error = unsafe { dss_solve_real_(&mut self.handle.handle,
                                     &(MKL_DSS_BACKWARD_SOLVE as MklInt),
                                     rhs.as_ptr() as *const c_void,
-                                    &num_rhs,
+                                    &(num_rhs as MklInt),
                                     solution.as_mut_ptr() as *mut c_void) };
 
         if error != 0 {
