@@ -8,3 +8,6 @@ edition = "2018"
 
 [dependencies]
 mkl-sys = { git = "https://github.com/Andlon/mkl-sys", branch = "master", features = [ "dss" ] }
+
+[dev-dependencies]
+approx = "0.3"

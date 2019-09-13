@@ -2,7 +2,9 @@ use std::marker::PhantomData;
 use mkl_sys::{MklInt, _MKL_DSS_HANDLE_t, MKL_DSS_DEFAULTS, MKL_DSS_ZERO_BASED_INDEXING,
               MKL_DSS_SYMMETRIC_STRUCTURE, MKL_DSS_SYMMETRIC, MKL_DSS_NON_SYMMETRIC,
               MKL_DSS_AUTO_ORDER, MKL_DSS_POSITIVE_DEFINITE, MKL_DSS_INDEFINITE,
-              dss_create_, dss_delete_, dss_define_structure_, dss_reorder_, dss_factor_real_};
+              MKL_DSS_FORWARD_SOLVE, MKL_DSS_DIAGONAL_SOLVE, MKL_DSS_BACKWARD_SOLVE,
+              dss_create_, dss_delete_, dss_define_structure_, dss_reorder_, dss_factor_real_,
+              dss_solve_real_};
 use std::ptr::{null_mut, null};
 use std::ffi::c_void;
 
@@ -116,11 +118,6 @@ pub struct SymbolicFactorization<T> {
     marker: PhantomData<T>
 }
 
-pub struct NumericalFactorization<T> {
-    handle: Handle,
-    marker: PhantomData<T>
-}
-
 impl<T> SymbolicFactorization<T>
 where
     T: SupportedScalar
@@ -188,5 +185,89 @@ where
             handle: self.handle,
             marker: PhantomData
         }
+    }
+}
+
+pub struct NumericalFactorization<T> {
+    handle: Handle,
+    marker: PhantomData<T>
+}
+
+impl<T> NumericalFactorization<T>
+where
+    T: SupportedScalar
+{
+    // TODO: Would it be safe to only take &self and still hand in a mutable pointer
+    // to the handle? We technically don't have any idea what is happening inside
+    // MKL, but on the other hand the factorization cannot be accessed from multiple threads,
+    // and I think as far as I can tell that the state of the factorization does not change?
+    // Unless an error somehow invalidates the handle? Not clear...
+    // Note: same for diagonal/backward
+    pub fn forward_substitute_into(&mut self, solution: &mut [T], rhs: &[T]) {
+        // TODO: Must save size to determine that length of the given values are valid,
+        // otherwise we may invoke UB!
+
+        // TODO: Determine number of RHS from length of data
+        let num_rhs = 1;
+
+        // TODO: Error handling
+        let error = unsafe { dss_solve_real_(&mut self.handle.handle,
+                                    &(MKL_DSS_FORWARD_SOLVE as MklInt),
+                                    rhs.as_ptr() as *const c_void,
+                                    &num_rhs,
+                                    solution.as_mut_ptr() as *mut c_void) };
+        if error != 0 {
+            eprintln!("dss_factor_real_ error (forward): {}", error);
+        }
+    }
+
+    pub fn diagonal_substitute_into(&mut self, solution: &mut [T], rhs: &[T]) {
+        // TODO: Must save size to determine that length of the given values are valid,
+        // otherwise we may invoke UB!
+
+        // TODO: Determine number of RHS from length of data
+        let num_rhs = 1;
+
+        let error = unsafe { dss_solve_real_(&mut self.handle.handle,
+                                    &(MKL_DSS_DIAGONAL_SOLVE as MklInt),
+                                    rhs.as_ptr() as *const c_void,
+                                    &num_rhs,
+                                    solution.as_mut_ptr() as *mut c_void) };
+
+        if error != 0 {
+            eprintln!("dss_factor_real_ error (diagonal): {}", error);
+        }
+    }
+
+    pub fn backward_substitute_into(&mut self, solution: &mut [T], rhs: &[T]) {
+        // TODO: Must save size to determine that length of the given values are valid,
+        // otherwise we may invoke UB!
+
+        // TODO: Determine number of RHS from length of data
+        let num_rhs = 1;
+
+        let error = unsafe { dss_solve_real_(&mut self.handle.handle,
+                                    &(MKL_DSS_BACKWARD_SOLVE as MklInt),
+                                    rhs.as_ptr() as *const c_void,
+                                    &num_rhs,
+                                    solution.as_mut_ptr() as *mut c_void) };
+
+        if error != 0 {
+            eprintln!("dss_factor_real_ error (backward): {}", error);
+        }
+    }
+
+    /// Convenience function for calling the different substitution phases.
+    ///
+    /// `buffer` must have same size as `solution`.
+    pub fn solve_into(&mut self, solution: &mut [T], buffer: &mut [T], rhs: &[T]) {
+        let y = solution;
+        self.forward_substitute_into(y, rhs);
+
+        let z = buffer;
+        self.diagonal_substitute_into(z, &y);
+
+        let x = y;
+        self.backward_substitute_into(x, &z);
     }
 }
