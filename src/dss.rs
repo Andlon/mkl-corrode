@@ -1,9 +1,10 @@
 use std::marker::PhantomData;
 use mkl_sys::{MklInt, _MKL_DSS_HANDLE_t, MKL_DSS_DEFAULTS, MKL_DSS_ZERO_BASED_INDEXING,
               MKL_DSS_SYMMETRIC_STRUCTURE, MKL_DSS_SYMMETRIC, MKL_DSS_NON_SYMMETRIC,
-              MKL_DSS_AUTO_ORDER,
-              dss_create_, dss_delete_, dss_define_structure_, dss_reorder_};
+              MKL_DSS_AUTO_ORDER, MKL_DSS_POSITIVE_DEFINITE, MKL_DSS_INDEFINITE,
+              dss_create_, dss_delete_, dss_define_structure_, dss_reorder_, dss_factor_real_};
 use std::ptr::{null_mut, null};
+use std::ffi::c_void;
 
 /// A wrapper around _MKL_DSS_HANDLE_t.
 ///
@@ -49,10 +50,6 @@ impl Drop for Handle {
     }
 }
 
-pub struct DssSolver<T> {
-    marker: PhantomData<T>
-}
-
 // TODO: Support complex numbers
 pub enum MatrixStructure {
     StructurallySymmetric,
@@ -70,6 +67,23 @@ impl MatrixStructure {
         }
     }
 }
+
+pub enum MatrixDefiniteness {
+    PositiveDefinite,
+    Indefinite
+}
+
+impl MatrixDefiniteness {
+    fn to_mkl_opt(&self) -> MklInt {
+        use MatrixDefiniteness::*;
+        match self {
+            PositiveDefinite => MKL_DSS_POSITIVE_DEFINITE as MklInt,
+            Indefinite => MKL_DSS_INDEFINITE as MklInt,
+        }
+    }
+}
+
+
 
 pub fn check_csr(row_ptr: &[MklInt], columns: &[MklInt]) {
     assert!(row_ptr.len() > 0, "row_ptr must always have positive length.");
@@ -102,6 +116,11 @@ pub struct SymbolicFactorization<T> {
     marker: PhantomData<T>
 }
 
+pub struct NumericalFactorization<T> {
+    handle: Handle,
+    marker: PhantomData<T>
+}
+
 impl<T> SymbolicFactorization<T>
 where
     T: SupportedScalar
@@ -114,13 +133,16 @@ where
 
         let nnz = columns.len() as MklInt;
 
+        let num_rows = row_ptr.len() as MklInt - 1;
+        let num_cols = num_rows;
+
         unsafe {
             // TODO: Handle errors
             let error = dss_define_structure_(&mut handle.handle,
                                   &define_opts,
                                   row_ptr.as_ptr(),
-                                  &(row_ptr.len() as MklInt - 1),
-                                  &(columns.len() as MklInt),
+                                  &num_rows,
+                                  &num_cols,
                                   columns.as_ptr(),
                                   &nnz
             );
@@ -141,6 +163,29 @@ where
 
         Self {
             handle,
+            marker: PhantomData
+        }
+    }
+
+    pub fn factor(mut self, values: &[T], definiteness: MatrixDefiniteness) -> NumericalFactorization<T> {
+        let opts = definiteness.to_mkl_opt();
+
+        // TODO: Must save e.g. size of sparsity pattern earlier in the process
+        // so that we may verify that the length of values is correct.
+        // Otherwise we may invoke UB.
+
+        unsafe {
+            // TODO: Handle errors
+            let error = dss_factor_real_(&mut self.handle.handle,
+                                         &opts,
+                                         values.as_ptr() as *const c_void);
+            if error != 0 {
+                eprintln!("dss_factor_real_ error: {}", error);
+            }
+        }
+
+        NumericalFactorization {
+            handle: self.handle,
             marker: PhantomData
         }
     }
