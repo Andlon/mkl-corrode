@@ -168,7 +168,31 @@ where
         }
     }
 
-    pub fn factor(mut self, values: &[T], definiteness: MatrixDefiniteness) -> NumericalFactorization<T> {
+    pub fn factor(self, values: &[T], definiteness: MatrixDefiniteness) -> NumericalFactorization<T> {
+        let mut factorization = NumericalFactorization {
+            handle: self.handle,
+            marker: PhantomData,
+            num_rows: self.num_rows,
+            nnz: self.nnz
+        };
+        // TODO: Return proper error
+        factorization.refactor(values, definiteness);
+        factorization
+    }
+}
+
+pub struct NumericalFactorization<T> {
+    handle: Handle,
+    marker: PhantomData<T>,
+    num_rows: usize,
+    nnz: usize
+}
+
+impl<T> NumericalFactorization<T>
+where
+    T: SupportedScalar
+{
+    pub fn refactor(&mut self, values: &[T], definiteness: MatrixDefiniteness) {
         // TODO: Part of error?
         assert_eq!(values.len(), self.nnz);
 
@@ -187,25 +211,8 @@ where
                 eprintln!("dss_factor_real_ error: {}", error);
             }
         }
-
-        NumericalFactorization {
-            handle: self.handle,
-            marker: PhantomData,
-            num_rows: self.num_rows
-        }
     }
-}
 
-pub struct NumericalFactorization<T> {
-    handle: Handle,
-    marker: PhantomData<T>,
-    num_rows: usize,
-}
-
-impl<T> NumericalFactorization<T>
-where
-    T: SupportedScalar
-{
     // TODO: Would it be safe to only take &self and still hand in a mutable pointer
     // to the handle? We technically don't have any idea what is happening inside
     // MKL, but on the other hand the factorization cannot be accessed from multiple threads,
