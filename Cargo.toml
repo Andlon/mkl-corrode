@@ -1,0 +1,10 @@
+[package]
+name = "mkl-corrode"
+version = "0.1.0"
+authors = ["Andreas Longva <andreas.b.longva@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+mkl-sys = { git = "https://github.com/Andlon/mkl-sys", branch = "master", features = [ "dss" ] }
