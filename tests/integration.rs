@@ -1,4 +1,4 @@
-use mkl_corrode::dss::{SymbolicFactorization, Structure};
+use mkl_corrode::dss::{SymbolicFactorization, MatrixStructure};
 
 #[test]
 fn dss_symbolic_factorization() {
@@ -9,5 +9,5 @@ fn dss_symbolic_factorization() {
         0
     ];
 
-    let symb = SymbolicFactorization::<f64>::from_csr(&row_ptr, &columns, Structure::NonSymmetric);
+    let symb = SymbolicFactorization::<f64>::from_csr(&row_ptr, &columns, MatrixStructure::NonSymmetric);
 }

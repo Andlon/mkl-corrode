@@ -54,15 +54,15 @@ pub struct DssSolver<T> {
 }
 
 // TODO: Support complex numbers
-pub enum Structure {
+pub enum MatrixStructure {
     StructurallySymmetric,
     Symmetric,
     NonSymmetric
 }
 
-impl Structure {
-    pub fn to_mkl_opt(&self) -> MklInt {
-        use Structure::*;
+impl MatrixStructure {
+    fn to_mkl_opt(&self) -> MklInt {
+        use MatrixStructure::*;
         match self {
             StructurallySymmetric => MKL_DSS_SYMMETRIC_STRUCTURE as MklInt,
             Symmetric => MKL_DSS_SYMMETRIC as MklInt,
@@ -106,7 +106,7 @@ impl<T> SymbolicFactorization<T>
 where
     T: SupportedScalar
 {
-    pub fn from_csr(row_ptr: &[MklInt], columns: &[MklInt], structure: Structure) -> Self {
+    pub fn from_csr(row_ptr: &[MklInt], columns: &[MklInt], structure: MatrixStructure) -> Self {
         let create_opts = (MKL_DSS_DEFAULTS + MKL_DSS_ZERO_BASED_INDEXING) as MklInt;
         let mut handle = Handle::create(create_opts);
 
