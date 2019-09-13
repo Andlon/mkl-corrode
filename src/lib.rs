@@ -1,9 +1,6 @@
-#[cfg(test)]
-mod tests {
+use mkl_sys::dss_create_;
+
+pub mod dss;
 
 
-    #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
-    }
-}
+
