@@ -23,7 +23,7 @@ use mkl_sys::{
 /// TODO: Probably also need something like a "stage" or "source" for the error? I.e.
 /// that the error happened during define_structure rather than reorder?
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum DssError {
+pub enum Error {
     InvalidOption,
     OutOfMemory,
     MsgLvlErr,
@@ -57,7 +57,7 @@ pub enum DssError {
     UnknownError,
 }
 
-impl DssError {
+impl Error {
     /// Construct a `DssError` from an MKL return code.
     ///
     /// This should cover every return code possible, but see notes made
@@ -129,7 +129,7 @@ struct Handle {
 }
 
 impl Handle {
-    fn create(options: MklInt) -> Result<Self, DssError> {
+    fn create(options: MklInt) -> Result<Self, Error> {
         let mut handle = null_mut();
 
         // TODO: Handle errors
@@ -137,7 +137,7 @@ impl Handle {
         if error == MKL_DSS_SUCCESS as MklInt {
             Ok(Self { handle })
         } else {
-            Err(DssError::from_return_code(error))
+            Err(Error::from_return_code(error))
         }
     }
 }
@@ -176,14 +176,14 @@ impl MatrixStructure {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum MatrixDefiniteness {
+pub enum Definiteness {
     PositiveDefinite,
     Indefinite,
 }
 
-impl MatrixDefiniteness {
+impl Definiteness {
     fn to_mkl_opt(&self) -> MklInt {
-        use MatrixDefiniteness::*;
+        use Definiteness::*;
         match self {
             PositiveDefinite => MKL_DSS_POSITIVE_DEFINITE as MklInt,
             Indefinite => MKL_DSS_INDEFINITE as MklInt,
@@ -191,7 +191,7 @@ impl MatrixDefiniteness {
     }
 }
 
-pub fn check_csr(row_ptr: &[MklInt], _columns: &[MklInt]) {
+fn check_csr(row_ptr: &[MklInt], _columns: &[MklInt]) {
     assert!(
         row_ptr.len() > 0,
         "row_ptr must always have positive length."
@@ -221,14 +221,14 @@ impl private::Sealed for f64 {}
 //unsafe impl SupportedScalar for f32 {}
 unsafe impl SupportedScalar for f64 {}
 
-pub struct NumericalFactorization<T> {
+pub struct Solver<T> {
     handle: Handle,
     marker: PhantomData<T>,
     num_rows: usize,
     nnz: usize,
 }
 
-impl<T> NumericalFactorization<T>
+impl<T> Solver<T>
 where
     T: SupportedScalar,
 {
@@ -236,7 +236,7 @@ where
                       columns: &[MklInt],
                       values: &[T],
                       structure: MatrixStructure,
-                      definiteness: MatrixDefiniteness) -> Result<Self, DssError> {
+                      definiteness: Definiteness) -> Result<Self, Error> {
         let nnz = columns.len();
 
         check_csr(row_ptr, columns);
@@ -263,16 +263,16 @@ where
                 &(nnz as MklInt),
         ) };
         if error != MKL_DSS_SUCCESS {
-            return Err(DssError::from_return_code(error));
+            return Err(Error::from_return_code(error));
         }
 
         let reorder_opts = MKL_DSS_AUTO_ORDER as MklInt;
         let error = unsafe { dss_reorder_(&mut handle.handle, &reorder_opts, null()) };
         if error != MKL_DSS_SUCCESS {
-            return Err(DssError::from_return_code(error));
+            return Err(Error::from_return_code(error));
         }
 
-        let mut factorization = NumericalFactorization {
+        let mut factorization = Solver {
             handle,
             num_rows,
             nnz,
@@ -283,7 +283,7 @@ where
         Ok(factorization)
     }
 
-    pub fn refactor(&mut self, values: &[T], definiteness: MatrixDefiniteness) {
+    pub fn refactor(&mut self, values: &[T], definiteness: Definiteness) {
         // TODO: Part of error?
         assert_eq!(values.len(), self.nnz);
 
