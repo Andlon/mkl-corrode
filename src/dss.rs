@@ -11,61 +11,30 @@ use std::ffi::c_void;
 // MKL constants
 use mkl_sys::{
     MKL_DSS_COL_ERR,
-    MKL_DSS_CONJUGATE_SOLVE,
     MKL_DSS_DIAG_ERR,
     MKL_DSS_FAILURE,
-    MKL_DSS_GET_ORDER,
-    MKL_DSS_HERMITIAN_INDEFINITE,
-    MKL_DSS_HERMITIAN_POSITIVE_DEFINITE,
     MKL_DSS_I32BIT_ERR,
     MKL_DSS_INVALID_OPTION,
-    MKL_DSS_METIS_OPENMP_ORDER,
-    MKL_DSS_METIS_ORDER,
-    MKL_DSS_MSG_LVL_DEBUG,
     MKL_DSS_MSG_LVL_ERR,
-    MKL_DSS_MSG_LVL_ERROR,
-    MKL_DSS_MSG_LVL_FATAL,
-    MKL_DSS_MSG_LVL_INFO,
-    MKL_DSS_MSG_LVL_SUCCESS,
-    MKL_DSS_MSG_LVL_WARNING,
-    MKL_DSS_MY_ORDER,
-    MKL_DSS_NON_SYMMETRIC_COMPLEX,
     MKL_DSS_NOT_SQUARE,
     MKL_DSS_OOC_MEM_ERR,
     MKL_DSS_OOC_OC_ERR,
     MKL_DSS_OOC_RW_ERR,
-    MKL_DSS_OOC_STRONG,
-    MKL_DSS_OOC_VARIABLE,
-    MKL_DSS_OPTION1_ORDER,
     MKL_DSS_OPTION_CONFLICT,
     MKL_DSS_OUT_OF_MEMORY,
-    MKL_DSS_PREORDER_ERR,
-    MKL_DSS_REFINEMENT_OFF,
-    MKL_DSS_REFINEMENT_ON,
     MKL_DSS_REORDER1_ERR,
     MKL_DSS_REORDER_ERR,
     MKL_DSS_ROW_ERR,
-    MKL_DSS_SINGLE_PRECISION,
     MKL_DSS_STATE_ERR,
     MKL_DSS_STATISTICS_INVALID_MATRIX,
     MKL_DSS_STATISTICS_INVALID_STATE,
     MKL_DSS_STATISTICS_INVALID_STRING,
     MKL_DSS_STRUCTURE_ERR,
     MKL_DSS_SUCCESS,
-    MKL_DSS_SYMMETRIC_COMPLEX,
-    MKL_DSS_SYMMETRIC_STRUCTURE_COMPLEX,
-    MKL_DSS_TERM_LVL_DEBUG,
     MKL_DSS_TERM_LVL_ERR,
-    MKL_DSS_TERM_LVL_ERROR,
-    MKL_DSS_TERM_LVL_FATAL,
-    MKL_DSS_TERM_LVL_INFO,
-    MKL_DSS_TERM_LVL_SUCCESS,
-    MKL_DSS_TERM_LVL_WARNING,
     MKL_DSS_TOO_FEW_VALUES,
     MKL_DSS_TOO_MANY_VALUES,
-    MKL_DSS_TRANSPOSE_SOLVE,
     MKL_DSS_VALUES_ERR,
-    MKL_DSS_ZERO_PIVOT
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -77,7 +46,9 @@ pub enum DssError {
     StateErr,
     RowErr,
     ColErr,
+    StructureErr,
     NotSquare,
+    ValuesErr,
     TooFewValues,
     TooManyValues,
     ReorderErr,
@@ -104,12 +75,34 @@ pub enum DssError {
 impl DssError {
     /// Construct a `DssError` from an MKL return code.
     ///
-    /// This should cover every return code possible.
+    /// This should cover every return code possible, but see notes made
+    /// in the docs for `UnknownError`.
     fn from_return_code(code: MklInt) -> Self {
-        match code {
-            MKL_DSS_INVALID_OPTION => Self::InvalidOption,
-            _ => Self::UnknownError
-        }
+        if code == MKL_DSS_INVALID_OPTION { Self::InvalidOption }
+        else if code == MKL_DSS_OUT_OF_MEMORY { Self::OutOfMemory }
+        else if code == MKL_DSS_MSG_LVL_ERR { Self::MsgLvlErr }
+        else if code == MKL_DSS_TERM_LVL_ERR { Self::TermLvlErr }
+        else if code == MKL_DSS_STATE_ERR { Self::StateErr }
+        else if code == MKL_DSS_ROW_ERR { Self::RowErr }
+        else if code == MKL_DSS_COL_ERR { Self::ColErr }
+        else if code == MKL_DSS_STRUCTURE_ERR { Self::StructureErr }
+        else if code == MKL_DSS_NOT_SQUARE { Self::NotSquare }
+        else if code == MKL_DSS_VALUES_ERR { Self::ValuesErr }
+        else if code == MKL_DSS_TOO_FEW_VALUES { Self::TooFewValues }
+        else if code == MKL_DSS_TOO_MANY_VALUES { Self::TooManyValues }
+        else if code == MKL_DSS_REORDER_ERR { Self::ReorderErr }
+        else if code == MKL_DSS_REORDER1_ERR { Self::Reorder1Err }
+        else if code == MKL_DSS_I32BIT_ERR { Self::I32BitErr }
+        else if code == MKL_DSS_FAILURE { Self::Failure }
+        else if code == MKL_DSS_OPTION_CONFLICT { Self::OptionConflict }
+        else if code == MKL_DSS_OOC_MEM_ERR { Self::OocMemErr }
+        else if code == MKL_DSS_OOC_OC_ERR { Self::OocOcErr }
+        else if code == MKL_DSS_OOC_RW_ERR { Self::OocRwErr }
+        else if code == MKL_DSS_DIAG_ERR { Self::DiagErr }
+        else if code == MKL_DSS_STATISTICS_INVALID_MATRIX { Self::StatisticsInvalidMatrix }
+        else if code == MKL_DSS_STATISTICS_INVALID_STATE { Self::StatisticsInvalidState }
+        else if code == MKL_DSS_STATISTICS_INVALID_STRING { Self::StatisticsInvalidString }
+        else { Self::UnknownError }
     }
 }
 
