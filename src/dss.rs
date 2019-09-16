@@ -78,6 +78,8 @@ impl DssError {
     /// This should cover every return code possible, but see notes made
     /// in the docs for `UnknownError`.
     fn from_return_code(code: MklInt) -> Self {
+        assert_ne!(code, MKL_DSS_SUCCESS);
+
         if code == MKL_DSS_INVALID_OPTION { Self::InvalidOption }
         else if code == MKL_DSS_OUT_OF_MEMORY { Self::OutOfMemory }
         else if code == MKL_DSS_MSG_LVL_ERR { Self::MsgLvlErr }
