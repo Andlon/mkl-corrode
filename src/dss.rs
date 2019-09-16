@@ -1,39 +1,22 @@
-use std::marker::PhantomData;
-use mkl_sys::{MklInt, _MKL_DSS_HANDLE_t, MKL_DSS_DEFAULTS, MKL_DSS_ZERO_BASED_INDEXING,
-              MKL_DSS_SYMMETRIC_STRUCTURE, MKL_DSS_SYMMETRIC, MKL_DSS_NON_SYMMETRIC,
-              MKL_DSS_AUTO_ORDER, MKL_DSS_POSITIVE_DEFINITE, MKL_DSS_INDEFINITE,
-              MKL_DSS_FORWARD_SOLVE, MKL_DSS_DIAGONAL_SOLVE, MKL_DSS_BACKWARD_SOLVE,
-              dss_create_, dss_delete_, dss_define_structure_, dss_reorder_, dss_factor_real_,
-              dss_solve_real_};
-use std::ptr::{null_mut, null};
+use mkl_sys::{
+    MklInt, _MKL_DSS_HANDLE_t, dss_create_, dss_define_structure_, dss_delete_, dss_factor_real_,
+    dss_reorder_, dss_solve_real_, MKL_DSS_AUTO_ORDER, MKL_DSS_BACKWARD_SOLVE, MKL_DSS_DEFAULTS,
+    MKL_DSS_DIAGONAL_SOLVE, MKL_DSS_FORWARD_SOLVE, MKL_DSS_INDEFINITE, MKL_DSS_NON_SYMMETRIC,
+    MKL_DSS_POSITIVE_DEFINITE, MKL_DSS_SYMMETRIC, MKL_DSS_SYMMETRIC_STRUCTURE,
+    MKL_DSS_ZERO_BASED_INDEXING,
+};
 use std::ffi::c_void;
+use std::marker::PhantomData;
+use std::ptr::{null, null_mut};
 
 // MKL constants
 use mkl_sys::{
-    MKL_DSS_COL_ERR,
-    MKL_DSS_DIAG_ERR,
-    MKL_DSS_FAILURE,
-    MKL_DSS_I32BIT_ERR,
-    MKL_DSS_INVALID_OPTION,
-    MKL_DSS_MSG_LVL_ERR,
-    MKL_DSS_NOT_SQUARE,
-    MKL_DSS_OOC_MEM_ERR,
-    MKL_DSS_OOC_OC_ERR,
-    MKL_DSS_OOC_RW_ERR,
-    MKL_DSS_OPTION_CONFLICT,
-    MKL_DSS_OUT_OF_MEMORY,
-    MKL_DSS_REORDER1_ERR,
-    MKL_DSS_REORDER_ERR,
-    MKL_DSS_ROW_ERR,
-    MKL_DSS_STATE_ERR,
-    MKL_DSS_STATISTICS_INVALID_MATRIX,
-    MKL_DSS_STATISTICS_INVALID_STATE,
-    MKL_DSS_STATISTICS_INVALID_STRING,
-    MKL_DSS_STRUCTURE_ERR,
-    MKL_DSS_SUCCESS,
-    MKL_DSS_TERM_LVL_ERR,
-    MKL_DSS_TOO_FEW_VALUES,
-    MKL_DSS_TOO_MANY_VALUES,
+    MKL_DSS_COL_ERR, MKL_DSS_DIAG_ERR, MKL_DSS_FAILURE, MKL_DSS_I32BIT_ERR, MKL_DSS_INVALID_OPTION,
+    MKL_DSS_MSG_LVL_ERR, MKL_DSS_NOT_SQUARE, MKL_DSS_OOC_MEM_ERR, MKL_DSS_OOC_OC_ERR,
+    MKL_DSS_OOC_RW_ERR, MKL_DSS_OPTION_CONFLICT, MKL_DSS_OUT_OF_MEMORY, MKL_DSS_REORDER1_ERR,
+    MKL_DSS_REORDER_ERR, MKL_DSS_ROW_ERR, MKL_DSS_STATE_ERR, MKL_DSS_STATISTICS_INVALID_MATRIX,
+    MKL_DSS_STATISTICS_INVALID_STATE, MKL_DSS_STATISTICS_INVALID_STRING, MKL_DSS_STRUCTURE_ERR,
+    MKL_DSS_SUCCESS, MKL_DSS_TERM_LVL_ERR, MKL_DSS_TOO_FEW_VALUES, MKL_DSS_TOO_MANY_VALUES,
     MKL_DSS_VALUES_ERR,
 };
 
@@ -69,7 +52,7 @@ pub enum DssError {
     /// This error is used when we encounter an unknown return code. This could for example
     /// happen if a new version of Intel MKL adds more return codes and this crate has not
     /// been updated to take that into account.
-    UnknownError
+    UnknownError,
 }
 
 impl DssError {
@@ -80,31 +63,57 @@ impl DssError {
     fn from_return_code(code: MklInt) -> Self {
         assert_ne!(code, MKL_DSS_SUCCESS);
 
-        if code == MKL_DSS_INVALID_OPTION { Self::InvalidOption }
-        else if code == MKL_DSS_OUT_OF_MEMORY { Self::OutOfMemory }
-        else if code == MKL_DSS_MSG_LVL_ERR { Self::MsgLvlErr }
-        else if code == MKL_DSS_TERM_LVL_ERR { Self::TermLvlErr }
-        else if code == MKL_DSS_STATE_ERR { Self::StateErr }
-        else if code == MKL_DSS_ROW_ERR { Self::RowErr }
-        else if code == MKL_DSS_COL_ERR { Self::ColErr }
-        else if code == MKL_DSS_STRUCTURE_ERR { Self::StructureErr }
-        else if code == MKL_DSS_NOT_SQUARE { Self::NotSquare }
-        else if code == MKL_DSS_VALUES_ERR { Self::ValuesErr }
-        else if code == MKL_DSS_TOO_FEW_VALUES { Self::TooFewValues }
-        else if code == MKL_DSS_TOO_MANY_VALUES { Self::TooManyValues }
-        else if code == MKL_DSS_REORDER_ERR { Self::ReorderErr }
-        else if code == MKL_DSS_REORDER1_ERR { Self::Reorder1Err }
-        else if code == MKL_DSS_I32BIT_ERR { Self::I32BitErr }
-        else if code == MKL_DSS_FAILURE { Self::Failure }
-        else if code == MKL_DSS_OPTION_CONFLICT { Self::OptionConflict }
-        else if code == MKL_DSS_OOC_MEM_ERR { Self::OocMemErr }
-        else if code == MKL_DSS_OOC_OC_ERR { Self::OocOcErr }
-        else if code == MKL_DSS_OOC_RW_ERR { Self::OocRwErr }
-        else if code == MKL_DSS_DIAG_ERR { Self::DiagErr }
-        else if code == MKL_DSS_STATISTICS_INVALID_MATRIX { Self::StatisticsInvalidMatrix }
-        else if code == MKL_DSS_STATISTICS_INVALID_STATE { Self::StatisticsInvalidState }
-        else if code == MKL_DSS_STATISTICS_INVALID_STRING { Self::StatisticsInvalidString }
-        else { Self::UnknownError }
+        if code == MKL_DSS_INVALID_OPTION {
+            Self::InvalidOption
+        } else if code == MKL_DSS_OUT_OF_MEMORY {
+            Self::OutOfMemory
+        } else if code == MKL_DSS_MSG_LVL_ERR {
+            Self::MsgLvlErr
+        } else if code == MKL_DSS_TERM_LVL_ERR {
+            Self::TermLvlErr
+        } else if code == MKL_DSS_STATE_ERR {
+            Self::StateErr
+        } else if code == MKL_DSS_ROW_ERR {
+            Self::RowErr
+        } else if code == MKL_DSS_COL_ERR {
+            Self::ColErr
+        } else if code == MKL_DSS_STRUCTURE_ERR {
+            Self::StructureErr
+        } else if code == MKL_DSS_NOT_SQUARE {
+            Self::NotSquare
+        } else if code == MKL_DSS_VALUES_ERR {
+            Self::ValuesErr
+        } else if code == MKL_DSS_TOO_FEW_VALUES {
+            Self::TooFewValues
+        } else if code == MKL_DSS_TOO_MANY_VALUES {
+            Self::TooManyValues
+        } else if code == MKL_DSS_REORDER_ERR {
+            Self::ReorderErr
+        } else if code == MKL_DSS_REORDER1_ERR {
+            Self::Reorder1Err
+        } else if code == MKL_DSS_I32BIT_ERR {
+            Self::I32BitErr
+        } else if code == MKL_DSS_FAILURE {
+            Self::Failure
+        } else if code == MKL_DSS_OPTION_CONFLICT {
+            Self::OptionConflict
+        } else if code == MKL_DSS_OOC_MEM_ERR {
+            Self::OocMemErr
+        } else if code == MKL_DSS_OOC_OC_ERR {
+            Self::OocOcErr
+        } else if code == MKL_DSS_OOC_RW_ERR {
+            Self::OocRwErr
+        } else if code == MKL_DSS_DIAG_ERR {
+            Self::DiagErr
+        } else if code == MKL_DSS_STATISTICS_INVALID_MATRIX {
+            Self::StatisticsInvalidMatrix
+        } else if code == MKL_DSS_STATISTICS_INVALID_STATE {
+            Self::StatisticsInvalidState
+        } else if code == MKL_DSS_STATISTICS_INVALID_STRING {
+            Self::StatisticsInvalidString
+        } else {
+            Self::UnknownError
+        }
     }
 }
 
@@ -150,7 +159,7 @@ impl Drop for Handle {
 pub enum MatrixStructure {
     StructurallySymmetric,
     Symmetric,
-    NonSymmetric
+    NonSymmetric,
 }
 
 impl MatrixStructure {
@@ -159,7 +168,7 @@ impl MatrixStructure {
         match self {
             StructurallySymmetric => MKL_DSS_SYMMETRIC_STRUCTURE as MklInt,
             Symmetric => MKL_DSS_SYMMETRIC as MklInt,
-            NonSymmetric => MKL_DSS_NON_SYMMETRIC as MklInt
+            NonSymmetric => MKL_DSS_NON_SYMMETRIC as MklInt,
         }
     }
 }
@@ -167,7 +176,7 @@ impl MatrixStructure {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum MatrixDefiniteness {
     PositiveDefinite,
-    Indefinite
+    Indefinite,
 }
 
 impl MatrixDefiniteness {
@@ -180,10 +189,11 @@ impl MatrixDefiniteness {
     }
 }
 
-
-
 pub fn check_csr(row_ptr: &[MklInt], _columns: &[MklInt]) {
-    assert!(row_ptr.len() > 0, "row_ptr must always have positive length.");
+    assert!(
+        row_ptr.len() > 0,
+        "row_ptr must always have positive length."
+    );
 
     // TODO: Turn into Result and return Result in `from_csr`
 
@@ -191,10 +201,11 @@ pub fn check_csr(row_ptr: &[MklInt], _columns: &[MklInt]) {
     // This is necessary for use in the solver
     // Also check that all values are in bounds?
     // Or does MKL do this anyway? Test...
-
 }
 
-mod private { pub trait Sealed {} }
+mod private {
+    pub trait Sealed {}
+}
 
 /// Marker trait for supported scalar types.
 ///
@@ -212,14 +223,18 @@ pub struct SymbolicFactorization<T> {
     handle: Handle,
     marker: PhantomData<T>,
     num_rows: usize,
-    nnz: usize
+    nnz: usize,
 }
 
 impl<T> SymbolicFactorization<T>
 where
-    T: SupportedScalar
+    T: SupportedScalar,
 {
-    pub fn try_from_csr(row_ptr: &[MklInt], columns: &[MklInt], structure: MatrixStructure) -> Result<Self, DssError> {
+    pub fn try_from_csr(
+        row_ptr: &[MklInt],
+        columns: &[MklInt],
+        structure: MatrixStructure,
+    ) -> Result<Self, DssError> {
         check_csr(row_ptr, columns);
 
         // TODO: Result instead of panic?
@@ -236,13 +251,14 @@ where
 
         unsafe {
             // TODO: Handle errors
-            let error = dss_define_structure_(&mut handle.handle,
-                                  &define_opts,
-                                  row_ptr.as_ptr(),
-                                  &(num_rows as MklInt),
-                                  &(num_cols as MklInt),
-                                  columns.as_ptr(),
-                                  &(nnz as MklInt)
+            let error = dss_define_structure_(
+                &mut handle.handle,
+                &define_opts,
+                row_ptr.as_ptr(),
+                &(num_rows as MklInt),
+                &(num_cols as MklInt),
+                columns.as_ptr(),
+                &(nnz as MklInt),
             );
             if error != 0 {
                 eprintln!("dss_define_structure_ error: {}", error);
@@ -263,16 +279,20 @@ where
             handle,
             marker: PhantomData,
             num_rows,
-            nnz
+            nnz,
         })
     }
 
-    pub fn factor(self, values: &[T], definiteness: MatrixDefiniteness) -> NumericalFactorization<T> {
+    pub fn factor(
+        self,
+        values: &[T],
+        definiteness: MatrixDefiniteness,
+    ) -> NumericalFactorization<T> {
         let mut factorization = NumericalFactorization {
             handle: self.handle,
             marker: PhantomData,
             num_rows: self.num_rows,
-            nnz: self.nnz
+            nnz: self.nnz,
         };
         // TODO: Return proper error
         factorization.refactor(values, definiteness);
@@ -284,12 +304,12 @@ pub struct NumericalFactorization<T> {
     handle: Handle,
     marker: PhantomData<T>,
     num_rows: usize,
-    nnz: usize
+    nnz: usize,
 }
 
 impl<T> NumericalFactorization<T>
 where
-    T: SupportedScalar
+    T: SupportedScalar,
 {
     pub fn refactor(&mut self, values: &[T], definiteness: MatrixDefiniteness) {
         // TODO: Part of error?
@@ -303,9 +323,11 @@ where
 
         unsafe {
             // TODO: Handle errors
-            let error = dss_factor_real_(&mut self.handle.handle,
-                                         &opts,
-                                         values.as_ptr() as *const c_void);
+            let error = dss_factor_real_(
+                &mut self.handle.handle,
+                &opts,
+                values.as_ptr() as *const c_void,
+            );
             if error != 0 {
                 eprintln!("dss_factor_real_ error: {}", error);
             }
@@ -322,17 +344,23 @@ where
         let num_rhs = rhs.len() / self.num_rows;
 
         // TODO: Make part of error?
-        assert_eq!(rhs.len() % self.num_rows, 0,
-                   "Number of entries in RHS must be divisible by system size.");
+        assert_eq!(
+            rhs.len() % self.num_rows,
+            0,
+            "Number of entries in RHS must be divisible by system size."
+        );
         assert_eq!(solution.len(), rhs.len());
 
-
         // TODO: Error handling
-        let error = unsafe { dss_solve_real_(&mut self.handle.handle,
-                                    &(MKL_DSS_FORWARD_SOLVE as MklInt),
-                                    rhs.as_ptr() as *const c_void,
-                                    &(num_rhs as MklInt),
-                                    solution.as_mut_ptr() as *mut c_void) };
+        let error = unsafe {
+            dss_solve_real_(
+                &mut self.handle.handle,
+                &(MKL_DSS_FORWARD_SOLVE as MklInt),
+                rhs.as_ptr() as *const c_void,
+                &(num_rhs as MklInt),
+                solution.as_mut_ptr() as *mut c_void,
+            )
+        };
         if error != 0 {
             eprintln!("dss_factor_real_ error (forward): {}", error);
         }
@@ -342,15 +370,22 @@ where
         let num_rhs = rhs.len() / self.num_rows;
 
         // TODO: Make part of error?
-        assert_eq!(rhs.len() % self.num_rows, 0,
-                   "Number of entries in RHS must be divisible by system size.");
+        assert_eq!(
+            rhs.len() % self.num_rows,
+            0,
+            "Number of entries in RHS must be divisible by system size."
+        );
         assert_eq!(solution.len(), rhs.len());
 
-        let error = unsafe { dss_solve_real_(&mut self.handle.handle,
-                                    &(MKL_DSS_DIAGONAL_SOLVE as MklInt),
-                                    rhs.as_ptr() as *const c_void,
-                                    &(num_rhs as MklInt),
-                                    solution.as_mut_ptr() as *mut c_void) };
+        let error = unsafe {
+            dss_solve_real_(
+                &mut self.handle.handle,
+                &(MKL_DSS_DIAGONAL_SOLVE as MklInt),
+                rhs.as_ptr() as *const c_void,
+                &(num_rhs as MklInt),
+                solution.as_mut_ptr() as *mut c_void,
+            )
+        };
 
         if error != 0 {
             eprintln!("dss_factor_real_ error (diagonal): {}", error);
@@ -361,15 +396,22 @@ where
         let num_rhs = rhs.len() / self.num_rows;
 
         // TODO: Make part of error?
-        assert_eq!(rhs.len() % self.num_rows, 0,
-                   "Number of entries in RHS must be divisible by system size.");
+        assert_eq!(
+            rhs.len() % self.num_rows,
+            0,
+            "Number of entries in RHS must be divisible by system size."
+        );
         assert_eq!(solution.len(), rhs.len());
 
-        let error = unsafe { dss_solve_real_(&mut self.handle.handle,
-                                    &(MKL_DSS_BACKWARD_SOLVE as MklInt),
-                                    rhs.as_ptr() as *const c_void,
-                                    &(num_rhs as MklInt),
-                                    solution.as_mut_ptr() as *mut c_void) };
+        let error = unsafe {
+            dss_solve_real_(
+                &mut self.handle.handle,
+                &(MKL_DSS_BACKWARD_SOLVE as MklInt),
+                rhs.as_ptr() as *const c_void,
+                &(num_rhs as MklInt),
+                solution.as_mut_ptr() as *mut c_void,
+            )
+        };
 
         if error != 0 {
             eprintln!("dss_factor_real_ error (backward): {}", error);
