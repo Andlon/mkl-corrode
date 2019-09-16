@@ -278,27 +278,25 @@ where
             nnz,
             marker: PhantomData
         };
-        // TODO: Return proper error
-        factorization.refactor(values, definiteness);
+        factorization.refactor(values, definiteness)?;
         Ok(factorization)
     }
 
-    pub fn refactor(&mut self, values: &[T], definiteness: Definiteness) {
+    pub fn refactor(&mut self, values: &[T], definiteness: Definiteness) -> Result<(), Error> {
         // TODO: Part of error?
         assert_eq!(values.len(), self.nnz);
 
         let opts = definiteness.to_mkl_opt();
+        let error = unsafe { dss_factor_real_(
+            &mut self.handle.handle,
+            &opts,
+            values.as_ptr() as *const c_void,
+        ) };
 
-        unsafe {
-            // TODO: Handle errors
-            let error = dss_factor_real_(
-                &mut self.handle.handle,
-                &opts,
-                values.as_ptr() as *const c_void,
-            );
-            if error != 0 {
-                eprintln!("dss_factor_real_ error: {}", error);
-            }
+        if error == MKL_DSS_SUCCESS {
+            Ok(())
+        } else {
+            Err(Error::from_return_code(error))
         }
     }
 
@@ -308,7 +306,7 @@ where
     // and I think as far as I can tell that the state of the factorization does not change?
     // Unless an error somehow invalidates the handle? Not clear...
     // Note: same for diagonal/backward
-    pub fn forward_substitute_into(&mut self, solution: &mut [T], rhs: &[T]) {
+    pub fn forward_substitute_into(&mut self, solution: &mut [T], rhs: &[T]) -> Result<(), Error> {
         let num_rhs = rhs.len() / self.num_rows;
 
         // TODO: Make part of error?
@@ -329,12 +327,14 @@ where
                 solution.as_mut_ptr() as *mut c_void,
             )
         };
-        if error != 0 {
-            eprintln!("dss_factor_real_ error (forward): {}", error);
+        if error == MKL_DSS_SUCCESS {
+            Ok(())
+        } else {
+            Err(Error::from_return_code(error))
         }
     }
 
-    pub fn diagonal_substitute_into(&mut self, solution: &mut [T], rhs: &[T]) {
+    pub fn diagonal_substitute_into(&mut self, solution: &mut [T], rhs: &[T]) -> Result<(), Error> {
         let num_rhs = rhs.len() / self.num_rows;
 
         // TODO: Make part of error?
@@ -354,13 +354,14 @@ where
                 solution.as_mut_ptr() as *mut c_void,
             )
         };
-
-        if error != 0 {
-            eprintln!("dss_factor_real_ error (diagonal): {}", error);
+        if error == MKL_DSS_SUCCESS {
+            Ok(())
+        } else {
+            Err(Error::from_return_code(error))
         }
     }
 
-    pub fn backward_substitute_into(&mut self, solution: &mut [T], rhs: &[T]) {
+    pub fn backward_substitute_into(&mut self, solution: &mut [T], rhs: &[T]) -> Result<(), Error> {
         let num_rhs = rhs.len() / self.num_rows;
 
         // TODO: Make part of error?
@@ -380,23 +381,26 @@ where
                 solution.as_mut_ptr() as *mut c_void,
             )
         };
-
-        if error != 0 {
-            eprintln!("dss_factor_real_ error (backward): {}", error);
+        if error == MKL_DSS_SUCCESS {
+            Ok(())
+        } else {
+            Err(Error::from_return_code(error))
         }
     }
 
     /// Convenience function for calling the different substitution phases.
     ///
     /// `buffer` must have same size as `solution`.
-    pub fn solve_into(&mut self, solution: &mut [T], buffer: &mut [T], rhs: &[T]) {
+    pub fn solve_into(&mut self, solution: &mut [T], buffer: &mut [T], rhs: &[T]) -> Result<(), Error> {
         let y = solution;
-        self.forward_substitute_into(y, rhs);
+        self.forward_substitute_into(y, rhs)?;
 
         let z = buffer;
-        self.diagonal_substitute_into(z, &y);
+        self.diagonal_substitute_into(z, &y)?;
 
         let x = y;
-        self.backward_substitute_into(x, &z);
+        self.backward_substitute_into(x, &z)?;
+
+        Ok(())
     }
 }

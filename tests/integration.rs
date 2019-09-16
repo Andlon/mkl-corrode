@@ -19,7 +19,7 @@ fn dss_1x1_factorization() {
     let rhs = [2.0];
     let mut sol = [0.0];
     let mut buffer = [0.0];
-    fact.solve_into(&mut sol, &mut buffer, &rhs);
+    fact.solve_into(&mut sol, &mut buffer, &rhs).unwrap();
 
     let expected_sol = [1.0];
     assert_abs_diff_eq!(sol.as_ref(), expected_sol.as_ref(), epsilon = 1e-12);
@@ -43,7 +43,7 @@ fn dss_factorization() {
     let rhs = [7.0, -13.0, 2.0, -1.0];
     let mut sol = [0.0, 0.0, 0.0, 0.0];
     let mut buffer = sol.clone();
-    fact.solve_into(&mut sol, &mut buffer, &rhs);
+    fact.solve_into(&mut sol, &mut buffer, &rhs).unwrap();
     let expected_sol = [-(1.0 / 3.0), -2.0, 5.0 / 3.0, 1.0];
 
     assert_abs_diff_eq!(sol.as_ref(), expected_sol.as_ref(), epsilon = 1e-12);
