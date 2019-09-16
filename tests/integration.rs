@@ -1,18 +1,11 @@
-use mkl_corrode::dss::{MatrixDefiniteness, MatrixStructure, SymbolicFactorization};
+use mkl_corrode::dss::{MatrixDefiniteness, MatrixStructure, NumericalFactorization};
 
 use approx::assert_abs_diff_eq;
 
-#[test]
-fn dss_symbolic_factorization() {
-    let row_ptr = [0, 1];
-    let columns = [0];
-
-    let _ = SymbolicFactorization::<f64>::try_from_csr(
-        &row_ptr,
-        &columns,
-        MatrixStructure::NonSymmetric,
-    );
-}
+use MatrixStructure::Symmetric;
+use MatrixDefiniteness::PositiveDefinite;
+use mkl_corrode::dss::MatrixStructure::NonSymmetric;
+use mkl_corrode::dss::MatrixDefiniteness::Indefinite;
 
 #[test]
 fn dss_1x1_factorization() {
@@ -20,9 +13,8 @@ fn dss_1x1_factorization() {
     let columns = [0];
     let values = [2.0];
 
-    let symb = SymbolicFactorization::try_from_csr(&row_ptr, &columns, MatrixStructure::Symmetric)
+    let mut fact = NumericalFactorization::try_factor(&row_ptr, &columns, &values, Symmetric, PositiveDefinite)
         .unwrap();
-    let mut fact = symb.factor(&values, MatrixDefiniteness::PositiveDefinite);
 
     let rhs = [2.0];
     let mut sol = [0.0];
@@ -45,10 +37,8 @@ fn dss_factorization() {
     let columns = [0, 2, 3, 0, 1, 1, 2, 3, 1, 3];
     let values = [10.0, 2.0, 7.0, 3.0, 6.0, 7.0, 9.0, 1.0, 2.0, 3.0];
 
-    let symb =
-        SymbolicFactorization::try_from_csr(&row_ptr, &columns, MatrixStructure::NonSymmetric)
-            .unwrap();
-    let mut fact = symb.factor(&values, MatrixDefiniteness::Indefinite);
+    let mut fact = NumericalFactorization::try_factor(&row_ptr, &columns, &values, NonSymmetric, Indefinite)
+        .unwrap();
 
     let rhs = [7.0, -13.0, 2.0, -1.0];
     let mut sol = [0.0, 0.0, 0.0, 0.0];
