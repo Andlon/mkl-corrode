@@ -20,6 +20,8 @@ use mkl_sys::{
     MKL_DSS_VALUES_ERR,
 };
 
+/// TODO: Probably also need something like a "stage" or "source" for the error? I.e.
+/// that the error happened during define_structure rather than reorder?
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum DssError {
     InvalidOption,
@@ -311,15 +313,62 @@ impl<T> NumericalFactorization<T>
 where
     T: SupportedScalar,
 {
+    pub fn try_factor(row_ptr: &[MklInt],
+                      columns: &[MklInt],
+                      values: &[T],
+                      structure: MatrixStructure,
+                      definiteness: MatrixDefiniteness) -> Result<Self, DssError> {
+        let nnz = columns.len();
+
+        check_csr(row_ptr, columns);
+        // TODO: Part of error?
+        assert_eq!(values.len(), nnz);
+
+        // TODO: Result instead of panic?
+        assert!(row_ptr.len() > 0);
+        let num_rows = row_ptr.len() - 1;
+        let num_cols = num_rows;
+
+        // TODO: Enable tweaking messages!
+        let create_opts = (MKL_DSS_DEFAULTS + MKL_DSS_ZERO_BASED_INDEXING) as MklInt;
+        let mut handle = Handle::create(create_opts)?;
+
+        let define_opts = structure.to_mkl_opt();
+        let error = unsafe { dss_define_structure_(
+                &mut handle.handle,
+                &define_opts,
+                row_ptr.as_ptr(),
+                &(num_rows as MklInt),
+                &(num_cols as MklInt),
+                columns.as_ptr(),
+                &(nnz as MklInt),
+        ) };
+        if error != MKL_DSS_SUCCESS {
+            return Err(DssError::from_return_code(error));
+        }
+
+        let reorder_opts = MKL_DSS_AUTO_ORDER as MklInt;
+        let error = unsafe { dss_reorder_(&mut handle.handle, &reorder_opts, null()) };
+        if error != MKL_DSS_SUCCESS {
+            return Err(DssError::from_return_code(error));
+        }
+
+        let mut factorization = NumericalFactorization {
+            handle,
+            num_rows,
+            nnz,
+            marker: PhantomData
+        };
+        // TODO: Return proper error
+        factorization.refactor(values, definiteness);
+        Ok(factorization)
+    }
+
     pub fn refactor(&mut self, values: &[T], definiteness: MatrixDefiniteness) {
         // TODO: Part of error?
         assert_eq!(values.len(), self.nnz);
 
         let opts = definiteness.to_mkl_opt();
-
-        // TODO: Must save e.g. size of sparsity pattern earlier in the process
-        // so that we may verify that the length of values is correct.
-        // Otherwise we may invoke UB.
 
         unsafe {
             // TODO: Handle errors
