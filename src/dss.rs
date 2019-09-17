@@ -332,7 +332,6 @@ where
         );
         assert_eq!(solution.len(), rhs.len());
 
-        // TODO: Error handling
         unsafe { dss_call! {
             dss_solve_real_(
                 &mut self.handle.handle,
