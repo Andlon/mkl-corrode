@@ -1,5 +1,5 @@
 use mkl_sys::{
-    MklInt, _MKL_DSS_HANDLE_t, dss_create_, dss_define_structure_, dss_delete_, dss_factor_real_,
+    MKL_INT, _MKL_DSS_HANDLE_t, dss_create_, dss_define_structure_, dss_delete_, dss_factor_real_,
     dss_reorder_, dss_solve_real_, MKL_DSS_AUTO_ORDER, MKL_DSS_BACKWARD_SOLVE, MKL_DSS_DEFAULTS,
     MKL_DSS_DIAGONAL_SOLVE, MKL_DSS_FORWARD_SOLVE, MKL_DSS_INDEFINITE, MKL_DSS_NON_SYMMETRIC,
     MKL_DSS_POSITIVE_DEFINITE, MKL_DSS_SYMMETRIC, MKL_DSS_SYMMETRIC_STRUCTURE,
@@ -93,7 +93,7 @@ impl ErrorCode {
     ///
     /// This should cover every return code possible, but see notes made
     /// in the docs for `UnknownError`.
-    fn from_return_code(code: MklInt) -> Self {
+    fn from_return_code(code: MKL_INT) -> Self {
         assert_ne!(code, MKL_DSS_SUCCESS);
 
         if code == MKL_DSS_INVALID_OPTION {
@@ -160,7 +160,7 @@ struct Handle {
 }
 
 impl Handle {
-    fn create(options: MklInt) -> Result<Self, Error> {
+    fn create(options: MKL_INT) -> Result<Self, Error> {
         let mut handle = null_mut();
         unsafe { dss_call! { dss_create_(&mut handle, &options) }}
         Ok(Self { handle })
@@ -190,7 +190,7 @@ pub enum MatrixStructure {
 }
 
 impl MatrixStructure {
-    fn to_mkl_opt(&self) -> MklInt {
+    fn to_mkl_opt(&self) -> MKL_INT {
         use MatrixStructure::*;
         match self {
             StructurallySymmetric => MKL_DSS_SYMMETRIC_STRUCTURE,
@@ -207,7 +207,7 @@ pub enum Definiteness {
 }
 
 impl Definiteness {
-    fn to_mkl_opt(&self) -> MklInt {
+    fn to_mkl_opt(&self) -> MKL_INT {
         use Definiteness::*;
         match self {
             PositiveDefinite => MKL_DSS_POSITIVE_DEFINITE,
@@ -216,7 +216,7 @@ impl Definiteness {
     }
 }
 
-fn check_csr(row_ptr: &[MklInt], _columns: &[MklInt]) {
+fn check_csr(row_ptr: &[MKL_INT], _columns: &[MKL_INT]) {
     assert!(
         row_ptr.len() > 0,
         "row_ptr must always have positive length."
@@ -257,8 +257,8 @@ impl<T> Solver<T>
 where
     T: SupportedScalar,
 {
-    pub fn try_factor(row_ptr: &[MklInt],
-                      columns: &[MklInt],
+    pub fn try_factor(row_ptr: &[MKL_INT],
+                      columns: &[MKL_INT],
                       values: &[T],
                       structure: MatrixStructure,
                       definiteness: Definiteness) -> Result<Self, Error> {
@@ -283,10 +283,10 @@ where
                 &define_opts,
                 row_ptr.as_ptr(),
                 // TODO: What if num_rows, nnz or num_cols > max(MKL_INT)?
-                &(num_rows as MklInt),
-                &(num_cols as MklInt),
+                &(num_rows as MKL_INT),
+                &(num_cols as MKL_INT),
                 columns.as_ptr(),
-                &(nnz as MklInt),
+                &(nnz as MKL_INT),
         ) }}
 
         let reorder_opts = MKL_DSS_AUTO_ORDER;
@@ -339,7 +339,7 @@ where
                 rhs.as_ptr() as *const c_void,
                 // TODO: What if num_rhs > max(MKL_INT)? Absurd situation, but it could maybe
                 // lead to undefined behavior, so we need to handle it
-                &(num_rhs as MklInt),
+                &(num_rhs as MKL_INT),
                 solution.as_mut_ptr() as *mut c_void,
             )
         }};
@@ -363,7 +363,7 @@ where
                 &(MKL_DSS_DIAGONAL_SOLVE),
                 rhs.as_ptr() as *const c_void,
                 // TODO: See other comment about this coercion cast
-                &(num_rhs as MklInt),
+                &(num_rhs as MKL_INT),
                 solution.as_mut_ptr() as *mut c_void,
             )
         } };
@@ -387,7 +387,7 @@ where
                 &(MKL_DSS_BACKWARD_SOLVE),
                 rhs.as_ptr() as *const c_void,
                 // TODO: See other comment about num_rhs and `as` cast
-                &(num_rhs as MklInt),
+                &(num_rhs as MKL_INT),
                 solution.as_mut_ptr() as *mut c_void,
             )
         }};
