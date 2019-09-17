@@ -20,10 +20,41 @@ use mkl_sys::{
     MKL_DSS_VALUES_ERR,
 };
 
-/// TODO: Probably also need something like a "stage" or "source" for the error? I.e.
-/// that the error happened during define_structure rather than reorder?
+/// Calls the given DSS function, noting its error code and upon a non-success result,
+/// returns an appropriate error.
+macro_rules! dss_call {
+    ($routine:ident ($($arg: tt)*)) => {
+        {
+            let code = $routine($($arg)*);
+            if code != MKL_DSS_SUCCESS {
+                return Err(Error::new(ErrorCode::from_return_code(code), stringify!($routine)));
+            }
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum Error {
+pub struct Error {
+    code: ErrorCode,
+    routine: &'static str
+}
+
+impl Error {
+    pub fn return_code(&self) -> ErrorCode {
+        self.code
+    }
+
+    pub fn routine(&self) -> &str {
+        self.routine
+    }
+
+    pub fn new(code: ErrorCode, routine: &'static str) -> Self {
+        Self { code, routine }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum ErrorCode {
     InvalidOption,
     OutOfMemory,
     MsgLvlErr,
@@ -57,7 +88,7 @@ pub enum Error {
     UnknownError,
 }
 
-impl Error {
+impl ErrorCode {
     /// Construct a `DssError` from an MKL return code.
     ///
     /// This should cover every return code possible, but see notes made
@@ -131,14 +162,8 @@ struct Handle {
 impl Handle {
     fn create(options: MklInt) -> Result<Self, Error> {
         let mut handle = null_mut();
-
-        // TODO: Handle errors
-        let error = unsafe { dss_create_(&mut handle, &options) };
-        if error == MKL_DSS_SUCCESS {
-            Ok(Self { handle })
-        } else {
-            Err(Error::from_return_code(error))
-        }
+        unsafe { dss_call! { dss_create_(&mut handle, &options) }}
+        Ok(Self { handle })
     }
 }
 
@@ -253,7 +278,7 @@ where
         let mut handle = Handle::create(create_opts)?;
 
         let define_opts = structure.to_mkl_opt();
-        let error = unsafe { dss_define_structure_(
+        unsafe { dss_call!{ dss_define_structure_(
                 &mut handle.handle,
                 &define_opts,
                 row_ptr.as_ptr(),
@@ -262,16 +287,10 @@ where
                 &(num_cols as MklInt),
                 columns.as_ptr(),
                 &(nnz as MklInt),
-        ) };
-        if error != MKL_DSS_SUCCESS {
-            return Err(Error::from_return_code(error));
-        }
+        ) }}
 
         let reorder_opts = MKL_DSS_AUTO_ORDER;
-        let error = unsafe { dss_reorder_(&mut handle.handle, &reorder_opts, null()) };
-        if error != MKL_DSS_SUCCESS {
-            return Err(Error::from_return_code(error));
-        }
+        unsafe { dss_call!{ dss_reorder_(&mut handle.handle, &reorder_opts, null()) }};
 
         let mut factorization = Solver {
             handle,
@@ -288,17 +307,12 @@ where
         assert_eq!(values.len(), self.nnz);
 
         let opts = definiteness.to_mkl_opt();
-        let error = unsafe { dss_factor_real_(
+        unsafe { dss_call!{ dss_factor_real_(
             &mut self.handle.handle,
             &opts,
             values.as_ptr() as *const c_void,
-        ) };
-
-        if error == MKL_DSS_SUCCESS {
-            Ok(())
-        } else {
-            Err(Error::from_return_code(error))
-        }
+        ) }};
+        Ok(())
     }
 
     // TODO: Would it be safe to only take &self and still hand in a mutable pointer
@@ -319,7 +333,7 @@ where
         assert_eq!(solution.len(), rhs.len());
 
         // TODO: Error handling
-        let error = unsafe {
+        unsafe { dss_call! {
             dss_solve_real_(
                 &mut self.handle.handle,
                 &(MKL_DSS_FORWARD_SOLVE),
@@ -329,12 +343,8 @@ where
                 &(num_rhs as MklInt),
                 solution.as_mut_ptr() as *mut c_void,
             )
-        };
-        if error == MKL_DSS_SUCCESS {
-            Ok(())
-        } else {
-            Err(Error::from_return_code(error))
-        }
+        }};
+        Ok(())
     }
 
     pub fn diagonal_substitute_into(&mut self, solution: &mut [T], rhs: &[T]) -> Result<(), Error> {
@@ -348,7 +358,7 @@ where
         );
         assert_eq!(solution.len(), rhs.len());
 
-        let error = unsafe {
+        unsafe { dss_call! {
             dss_solve_real_(
                 &mut self.handle.handle,
                 &(MKL_DSS_DIAGONAL_SOLVE),
@@ -357,12 +367,8 @@ where
                 &(num_rhs as MklInt),
                 solution.as_mut_ptr() as *mut c_void,
             )
-        };
-        if error == MKL_DSS_SUCCESS {
-            Ok(())
-        } else {
-            Err(Error::from_return_code(error))
-        }
+        } };
+        Ok(())
     }
 
     pub fn backward_substitute_into(&mut self, solution: &mut [T], rhs: &[T]) -> Result<(), Error> {
@@ -376,7 +382,7 @@ where
         );
         assert_eq!(solution.len(), rhs.len());
 
-        let error = unsafe {
+        unsafe { dss_call! {
             dss_solve_real_(
                 &mut self.handle.handle,
                 &(MKL_DSS_BACKWARD_SOLVE),
@@ -385,12 +391,8 @@ where
                 &(num_rhs as MklInt),
                 solution.as_mut_ptr() as *mut c_void,
             )
-        };
-        if error == MKL_DSS_SUCCESS {
-            Ok(())
-        } else {
-            Err(Error::from_return_code(error))
-        }
+        }};
+        Ok(())
     }
 
     /// Convenience function for calling the different substitution phases.
