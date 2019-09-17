@@ -134,7 +134,7 @@ impl Handle {
 
         // TODO: Handle errors
         let error = unsafe { dss_create_(&mut handle, &options) };
-        if error == MKL_DSS_SUCCESS as MklInt {
+        if error == MKL_DSS_SUCCESS {
             Ok(Self { handle })
         } else {
             Err(Error::from_return_code(error))
@@ -147,7 +147,7 @@ impl Drop for Handle {
         unsafe {
             // TODO: Better handling here, but we cannot really do anything else than panic,
             // can we?
-            let delete_opts = MKL_DSS_DEFAULTS as MklInt;
+            let delete_opts = MKL_DSS_DEFAULTS;
             let error = dss_delete_(&mut self.handle, &delete_opts);
             if error != 0 {
                 panic!("dss_delete error: {}", error);
@@ -168,9 +168,9 @@ impl MatrixStructure {
     fn to_mkl_opt(&self) -> MklInt {
         use MatrixStructure::*;
         match self {
-            StructurallySymmetric => MKL_DSS_SYMMETRIC_STRUCTURE as MklInt,
-            Symmetric => MKL_DSS_SYMMETRIC as MklInt,
-            NonSymmetric => MKL_DSS_NON_SYMMETRIC as MklInt,
+            StructurallySymmetric => MKL_DSS_SYMMETRIC_STRUCTURE,
+            Symmetric => MKL_DSS_SYMMETRIC,
+            NonSymmetric => MKL_DSS_NON_SYMMETRIC,
         }
     }
 }
@@ -185,8 +185,8 @@ impl Definiteness {
     fn to_mkl_opt(&self) -> MklInt {
         use Definiteness::*;
         match self {
-            PositiveDefinite => MKL_DSS_POSITIVE_DEFINITE as MklInt,
-            Indefinite => MKL_DSS_INDEFINITE as MklInt,
+            PositiveDefinite => MKL_DSS_POSITIVE_DEFINITE,
+            Indefinite => MKL_DSS_INDEFINITE,
         }
     }
 }
@@ -249,7 +249,7 @@ where
         let num_cols = num_rows;
 
         // TODO: Enable tweaking messages!
-        let create_opts = (MKL_DSS_DEFAULTS + MKL_DSS_ZERO_BASED_INDEXING) as MklInt;
+        let create_opts = MKL_DSS_DEFAULTS + MKL_DSS_ZERO_BASED_INDEXING;
         let mut handle = Handle::create(create_opts)?;
 
         let define_opts = structure.to_mkl_opt();
@@ -257,6 +257,7 @@ where
                 &mut handle.handle,
                 &define_opts,
                 row_ptr.as_ptr(),
+                // TODO: What if num_rows, nnz or num_cols > max(MKL_INT)?
                 &(num_rows as MklInt),
                 &(num_cols as MklInt),
                 columns.as_ptr(),
@@ -266,7 +267,7 @@ where
             return Err(Error::from_return_code(error));
         }
 
-        let reorder_opts = MKL_DSS_AUTO_ORDER as MklInt;
+        let reorder_opts = MKL_DSS_AUTO_ORDER;
         let error = unsafe { dss_reorder_(&mut handle.handle, &reorder_opts, null()) };
         if error != MKL_DSS_SUCCESS {
             return Err(Error::from_return_code(error));
@@ -321,8 +322,10 @@ where
         let error = unsafe {
             dss_solve_real_(
                 &mut self.handle.handle,
-                &(MKL_DSS_FORWARD_SOLVE as MklInt),
+                &(MKL_DSS_FORWARD_SOLVE),
                 rhs.as_ptr() as *const c_void,
+                // TODO: What if num_rhs > max(MKL_INT)? Absurd situation, but it could maybe
+                // lead to undefined behavior, so we need to handle it
                 &(num_rhs as MklInt),
                 solution.as_mut_ptr() as *mut c_void,
             )
@@ -348,8 +351,9 @@ where
         let error = unsafe {
             dss_solve_real_(
                 &mut self.handle.handle,
-                &(MKL_DSS_DIAGONAL_SOLVE as MklInt),
+                &(MKL_DSS_DIAGONAL_SOLVE),
                 rhs.as_ptr() as *const c_void,
+                // TODO: See other comment about this coercion cast
                 &(num_rhs as MklInt),
                 solution.as_mut_ptr() as *mut c_void,
             )
@@ -375,8 +379,9 @@ where
         let error = unsafe {
             dss_solve_real_(
                 &mut self.handle.handle,
-                &(MKL_DSS_BACKWARD_SOLVE as MklInt),
+                &(MKL_DSS_BACKWARD_SOLVE),
                 rhs.as_ptr() as *const c_void,
+                // TODO: See other comment about num_rhs and `as` cast
                 &(num_rhs as MklInt),
                 solution.as_mut_ptr() as *mut c_void,
             )
