@@ -232,7 +232,7 @@ fn check_csr(row_ptr: &[MKL_INT], _columns: &[MKL_INT]) {
 
 mod internal {
     pub trait InternalScalar {
-        fn zero() -> Self;
+        fn zero_element() -> Self;
     }
 }
 
@@ -247,7 +247,7 @@ pub unsafe trait SupportedScalar: Copy + internal::InternalScalar {
 // Can have the sealed trait provide us with the appropriate option for this!
 //impl private::Sealed for f32 {}
 impl internal::InternalScalar for f64 {
-    fn zero() -> Self {
+    fn zero_element() -> Self {
         0.0
     }
 }
@@ -421,8 +421,8 @@ where
     /// Convenience function that internally allocates buffer storage and output storage.
     pub fn solve(&mut self, rhs: &[T]) -> Result<Vec<T>, Error>
     {
-        let mut solution = vec![T::zero(); rhs.len()];
-        let mut buffer = vec![T::zero(); rhs.len()];
+        let mut solution = vec![T::zero_element(); rhs.len()];
+        let mut buffer = vec![T::zero_element(); rhs.len()];
         self.solve_into(&mut solution, &mut buffer, rhs)?;
         Ok(solution)
     }
