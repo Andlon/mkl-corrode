@@ -50,21 +50,45 @@ fn dss_factorization() {
 }
 
 #[test]
-fn dss_symmetric_factorization() {
-    // Matrix
-    // [10, 0, 2,
-    //   0, 5, 1
-    //   2  1  4]
-    let row_ptr = [0, 2, 4, 7];
-    let columns = [0, 2, 1, 2, 0, 1, 2];
-    let values = [10.0, 2.0, 5.0, 1.0, 2.0, 1.0, 4.0];
+fn dss_symmetric_posdef_factorization() {
+    // Redundantly stored entries (i.e. lower triangular portion explicitly stored
+    {
+        // Matrix
+        // [10, 0, 2,
+        //   0, 5, 1
+        //   2  1  4]
+        let row_ptr = [0, 2, 4, 7];
+        let columns = [0, 2, 1, 2, 0, 1, 2];
+        let values = [10.0, 2.0, 5.0, 1.0, 2.0, 1.0, 4.0];
 
-    let mut fact = Solver::try_factor(&row_ptr, &columns, &values, NonSymmetric, Indefinite)
-        .unwrap();
+        let mut fact = Solver::try_factor(&row_ptr, &columns, &values, Symmetric, PositiveDefinite)
+            .unwrap();
 
-    let rhs = [2.0, -3.0, 5.0];
-    let solution = fact.solve(&rhs).unwrap();
-    let expected_sol = [-0.10588235, -0.90588235,  1.52941176];
+        let rhs = [2.0, -3.0, 5.0];
+        let solution = fact.solve(&rhs).unwrap();
+        let expected_sol = [-0.10588235, -0.90588235,  1.52941176];
 
-    assert_abs_diff_eq!(solution.as_ref(), expected_sol.as_ref(), epsilon = 1e-6);
+        assert_abs_diff_eq!(solution.as_ref(), expected_sol.as_ref(), epsilon = 1e-6);
+    }
+
+    // Same test, but store only upper triangular part of matrix
+    {
+        // Matrix
+        // [10, 0, 2,
+        //   0, 5, 1
+        //   2  1  4]
+        let row_ptr = [0, 2, 4, 5];
+        let columns = [0, 2, 1, 2, 2];
+        let values = [10.0, 2.0, 5.0, 1.0, 4.0];
+
+        let mut fact = Solver::try_factor(&row_ptr, &columns, &values, Symmetric, PositiveDefinite)
+            .unwrap();
+
+        let rhs = [2.0, -3.0, 5.0];
+        let solution = fact.solve(&rhs).unwrap();
+        let expected_sol = [-0.10588235, -0.90588235,  1.52941176];
+
+        assert_abs_diff_eq!(solution.as_ref(), expected_sol.as_ref(), epsilon = 1e-6);
+    }
+
 }
