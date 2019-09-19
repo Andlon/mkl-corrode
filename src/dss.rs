@@ -19,6 +19,10 @@ use mkl_sys::{
     MKL_DSS_SUCCESS, MKL_DSS_TERM_LVL_ERR, MKL_DSS_TOO_FEW_VALUES, MKL_DSS_TOO_MANY_VALUES,
     MKL_DSS_VALUES_ERR,
 };
+use std::borrow::Cow;
+use std::convert::TryFrom;
+use std::any::{TypeId};
+use std::mem::transmute;
 
 /// Calls the given DSS function, noting its error code and upon a non-success result,
 /// returns an appropriate error.
@@ -30,6 +34,216 @@ macro_rules! dss_call {
                 return Err(Error::new(ErrorCode::from_return_code(code), stringify!($routine)));
             }
         }
+    }
+}
+
+// TODO: We only care about square matrices
+pub struct SparseMatrix<'a, T>
+where
+    T: Clone
+{
+    row_offsets: Cow<'a, [MKL_INT]>,
+    columns: Cow<'a, [MKL_INT]>,
+    values: Cow<'a, [T]>
+}
+
+pub enum SparseMatrixDataError {
+    NonMonotoneColumns,
+    MissingExplicitDiagonal,
+    UnexpectedLowerTriangularPart,
+    ColumnIndexOutOfBounds,
+    NonMonotoneRowOffsets,
+    EmptyRowOffsets,
+    InvalidRowOffset,
+    InvalidColumnIndex,
+    InsufficientIndexSize
+}
+
+impl SparseMatrixDataError {
+    fn is_recoverable(&self) -> bool {
+        unimplemented!()
+    }
+}
+
+fn is_same_type<T, U>() -> bool
+where
+    T: 'static,
+    U: 'static
+{
+    TypeId::of::<T>() == TypeId::of::<U>()
+}
+
+// TODO: Move to utils file or something?
+fn transmute_identical_slice<T, U>(slice: &[T]) -> Option<&[U]>
+    where T: 'static, U: 'static {
+    if is_same_type::<T, U>() {
+        Some(unsafe { transmute(slice) })
+    } else {
+        None
+    }
+}
+
+fn rebuild_csr<'a, T, I>(row_offsets: &'a [I],
+                     columns: &'a [I],
+                     values: &'a [T],
+                     structure: MatrixStructure)
+    -> Result<SparseMatrix<'a, T>, SparseMatrixDataError>
+where
+    T: SupportedScalar,
+    usize: TryFrom<I>,
+    MKL_INT: TryFrom<I>,
+    I: Copy
+{
+    let keep_lower_tri = match structure {
+        MatrixStructure::Symmetric | MatrixStructure::StructurallySymmetric => false,
+        MatrixStructure::NonSymmetric => true
+    };
+    let needs_explicit_diagonal = match structure {
+        MatrixStructure::Symmetric | MatrixStructure::StructurallySymmetric => false,
+        MatrixStructure::NonSymmetric => true
+    };
+
+    // Helper conversion functions.
+    let offset_as_usize = |offset| usize::try_from(offset)
+        .map_err(|_| SparseMatrixDataError::InvalidRowOffset);
+    let index_as_mkl_int = |idx| MKL_INT::try_from(idx)
+        .map_err(|_| SparseMatrixDataError::InvalidColumnIndex);
+    let usize_as_mkl_int = |idx| <MKL_INT as TryFrom<usize>>::try_from(idx)
+        .map_err(|_| SparseMatrixDataError::InsufficientIndexSize);
+
+    let num_rows = row_offsets.len() - 1;
+    let num_cols = usize_as_mkl_int(num_rows)?;
+    let nnz = values.len();
+    // TODO: Assertion or error?
+    assert_eq!(nnz, columns.len());
+
+    if row_offsets.is_empty() {
+        return Err(SparseMatrixDataError::EmptyRowOffsets);
+    }
+
+    // TODO: Check that last offset equals number of nnz
+    if nnz != offset_as_usize(*row_offsets.last().unwrap())? {
+        return Err(SparseMatrixDataError::InvalidRowOffset);
+    }
+
+    let mut new_row_offsets = Vec::new();
+    let mut new_columns = Vec::new();
+    let mut new_values = Vec::new();
+
+    new_row_offsets.push(0 as MKL_INT);
+
+    for i in 0..num_rows {
+        let current_offset = row_offsets[i];
+        let current_nnz_count = new_columns.len();
+        let row_begin = usize::try_from(current_offset)
+            .map_err(|_| SparseMatrixDataError::InvalidRowOffset)?;
+        let row_end = usize::try_from(row_offsets[i + 1])
+            .map_err(|_| SparseMatrixDataError::InvalidRowOffset)?;
+        let i = usize_as_mkl_int(i)?;
+
+        if row_end < row_begin {
+            return Err(SparseMatrixDataError::NonMonotoneRowOffsets);
+        }
+
+        // - check that each column is in bounds, if not abort
+        // - check that column indices are monotone increasing, if not abort
+        // - If (structurally) symmetric: check that the diagonal element exists, if not insert it
+        // - If (structurally) symmetric: ignore lower triangular elements
+
+        let columns_for_row = &columns[row_begin..row_end];
+        let values_for_row = &values[row_begin..row_end];
+
+        let mut have_placed_diagonal = false;
+
+        let mut prev_column = None;
+        for (j, v_j) in columns_for_row.iter().zip(values_for_row) {
+            let j = index_as_mkl_int(*j)?;
+
+            if j >= num_cols {
+                return Err(SparseMatrixDataError::InvalidColumnIndex);
+            }
+
+            if let Some(j_prev) = prev_column {
+                if j >= j_prev {
+                    return Err(SparseMatrixDataError::NonMonotoneColumns);
+                }
+            }
+
+            if j < i {
+                if keep_lower_tri {
+                    new_columns.push(j);
+                    new_values.push(*v_j);
+                }
+            } else {
+                if needs_explicit_diagonal {
+                    if i == j {
+                        have_placed_diagonal = true;
+                    } else if i < j && !have_placed_diagonal {
+                        new_columns.push(i);
+                        new_values.push(T::zero_element());
+                        have_placed_diagonal = true;
+                    }
+                }
+
+                new_columns.push(j);
+                new_values.push(*v_j);
+            }
+
+            prev_column = Some(j);
+        }
+
+        let num_row_entries = new_columns.len() - current_nnz_count;
+        let offset_diff = usize_as_mkl_int(num_row_entries)?;
+        let new_offset = index_as_mkl_int(current_offset)? + offset_diff;
+        new_row_offsets.push(new_offset);
+    }
+
+    let matrix = SparseMatrix {
+        row_offsets: Cow::Owned(new_row_offsets),
+        columns: Cow::Owned(new_columns),
+        values: Cow::Owned(new_values)
+    };
+    Ok(matrix)
+}
+
+impl<'a, T> SparseMatrix<'a, T>
+where
+    T: SupportedScalar
+{
+    pub fn try_from_csr(_row_offsets: &'a [MKL_INT],
+                        _columns: &'a [MKL_INT],
+                        _values: &'a [T],
+                        _structure: MatrixStructure)
+        -> Result<Self, SparseMatrixDataError>
+    {
+        unimplemented!()
+    }
+
+    pub fn try_convert_from_csr<I>(row_offsets: &'a [I],
+                                   columns: &'a [I],
+                                   values: &'a [T],
+                                   structure: MatrixStructure)
+        -> Result<Self, SparseMatrixDataError>
+    where
+        I: 'static + Copy,
+        MKL_INT: TryFrom<I>,
+        usize: TryFrom<I>
+    {
+        // If the data already has the right integer type, then try to pass it in to MKL directly.
+        // If it fails, it might be that we can recover by rebuilding the matrix data.
+        if is_same_type::<I, MKL_INT>() {
+            let row_offsets_mkl_int = transmute_identical_slice(row_offsets).unwrap();
+            let columns_mkl_int = transmute_identical_slice(columns).unwrap();
+            let result = Self::try_from_csr(row_offsets_mkl_int, columns_mkl_int, values, structure);
+            match result {
+                Ok(matrix) => return Ok(matrix),
+                Err(error) => if !error.is_recoverable() {
+                    return Err(error);
+                }
+            }
+        };
+
+        rebuild_csr(row_offsets, columns, values, structure)
     }
 }
 
