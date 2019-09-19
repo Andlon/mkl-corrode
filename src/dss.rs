@@ -237,14 +237,20 @@ mod private {
 /// Marker trait for supported scalar types.
 ///
 /// Can not be implemented by dependent crates.
-pub unsafe trait SupportedScalar: Copy + private::Sealed {}
+pub unsafe trait SupportedScalar: Copy + private::Sealed {
+    fn zero() -> Self;
+}
 
 // TODO: To support f32 we need to pass appropriate options during handle creation
 // Can have the sealed trait provide us with the appropriate option for this!
 //impl private::Sealed for f32 {}
 impl private::Sealed for f64 {}
 //unsafe impl SupportedScalar for f32 {}
-unsafe impl SupportedScalar for f64 {}
+unsafe impl SupportedScalar for f64 {
+    fn zero() -> Self {
+        0.0
+    }
+}
 
 pub struct Solver<T> {
     handle: Handle,
@@ -408,5 +414,14 @@ where
         self.backward_substitute_into(x, &z)?;
 
         Ok(())
+    }
+
+    /// Convenience function that internally allocates buffer storage and output storage.
+    pub fn solve(&mut self, rhs: &[T]) -> Result<Vec<T>, Error>
+    {
+        let mut solution = vec![T::zero(); rhs.len()];
+        let mut buffer = vec![T::zero(); rhs.len()];
+        self.solve_into(&mut solution, &mut buffer, rhs)?;
+        Ok(solution)
     }
 }
