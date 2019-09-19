@@ -230,27 +230,29 @@ fn check_csr(row_ptr: &[MKL_INT], _columns: &[MKL_INT]) {
     // Or does MKL do this anyway? Test...
 }
 
-mod private {
-    pub trait Sealed {}
+mod internal {
+    pub trait InternalScalar {
+        fn zero() -> Self;
+    }
 }
 
 /// Marker trait for supported scalar types.
 ///
 /// Can not be implemented by dependent crates.
-pub unsafe trait SupportedScalar: Copy + private::Sealed {
-    fn zero() -> Self;
+pub unsafe trait SupportedScalar: Copy + internal::InternalScalar {
+
 }
 
 // TODO: To support f32 we need to pass appropriate options during handle creation
 // Can have the sealed trait provide us with the appropriate option for this!
 //impl private::Sealed for f32 {}
-impl private::Sealed for f64 {}
-//unsafe impl SupportedScalar for f32 {}
-unsafe impl SupportedScalar for f64 {
+impl internal::InternalScalar for f64 {
     fn zero() -> Self {
         0.0
     }
 }
+//unsafe impl SupportedScalar for f32 {}
+unsafe impl SupportedScalar for f64 {}
 
 pub struct Solver<T> {
     handle: Handle,
