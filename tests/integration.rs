@@ -48,3 +48,23 @@ fn dss_factorization() {
 
     assert_abs_diff_eq!(sol.as_ref(), expected_sol.as_ref(), epsilon = 1e-12);
 }
+
+#[test]
+fn dss_symmetric_factorization() {
+    // Matrix
+    // [10, 0, 2,
+    //   0, 5, 1
+    //   2  1  4]
+    let row_ptr = [0, 2, 4, 7];
+    let columns = [0, 2, 1, 2, 0, 1, 2];
+    let values = [10.0, 2.0, 5.0, 1.0, 2.0, 1.0, 4.0];
+
+    let mut fact = Solver::try_factor(&row_ptr, &columns, &values, NonSymmetric, Indefinite)
+        .unwrap();
+
+    let rhs = [2.0, -3.0, 5.0];
+    let solution = fact.solve(&rhs).unwrap();
+    let expected_sol = [-0.10588235, -0.90588235,  1.52941176];
+
+    assert_abs_diff_eq!(solution.as_ref(), expected_sol.as_ref(), epsilon = 1e-6);
+}
