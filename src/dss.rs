@@ -540,20 +540,6 @@ impl Definiteness {
     }
 }
 
-fn check_csr(row_ptr: &[MKL_INT], _columns: &[MKL_INT]) {
-    assert!(
-        row_ptr.len() > 0,
-        "row_ptr must always have positive length."
-    );
-
-    // TODO: Turn into Result and return Result in `from_csr`
-
-    // TODO: Consider explicitly checking that diagonals are explicitly stored?
-    // This is necessary for use in the solver
-    // Also check that all values are in bounds?
-    // Or does MKL do this anyway? Test...
-}
-
 mod internal {
     pub trait InternalScalar {
         fn zero_element() -> Self;
@@ -597,7 +583,6 @@ where
         let structure = matrix.structure();
         let nnz = values.len();
 
-        check_csr(row_ptr, columns);
         // TODO: Part of error?
         assert_eq!(values.len(), nnz);
 
