@@ -282,9 +282,11 @@ where
             ) }
         }
 
-        let mut reorder_opts = MKL_DSS_AUTO_ORDER;
+        let reorder_opts;
         if options.parallel_reorder {
-            reorder_opts += MKL_DSS_METIS_OPENMP_ORDER;
+            reorder_opts = MKL_DSS_METIS_OPENMP_ORDER;
+        } else {
+            reorder_opts = MKL_DSS_AUTO_ORDER;
         }
         unsafe {
             dss_call! { dss_reorder_(&mut handle.handle, &reorder_opts, null()) }
