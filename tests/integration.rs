@@ -1,4 +1,4 @@
-use mkl_corrode::dss::{Definiteness, MatrixStructure, Solver};
+use mkl_corrode::dss::{Definiteness, MatrixStructure, Solver, SparseMatrix};
 
 use approx::assert_abs_diff_eq;
 
@@ -13,7 +13,8 @@ fn dss_1x1_factorization() {
     let columns = [0];
     let values = [2.0];
 
-    let mut fact = Solver::try_factor(&row_ptr, &columns, &values, Symmetric, PositiveDefinite)
+    let matrix = SparseMatrix::try_convert_from_csr(&row_ptr, &columns, &values, Symmetric).unwrap();
+    let mut fact = Solver::try_factor(&matrix, PositiveDefinite)
         .unwrap();
 
     let rhs = [2.0];
@@ -37,7 +38,8 @@ fn dss_factorization() {
     let columns = [0, 2, 3, 0, 1, 1, 2, 3, 1, 3];
     let values = [10.0, 2.0, 7.0, 3.0, 6.0, 7.0, 9.0, 1.0, 2.0, 3.0];
 
-    let mut fact = Solver::try_factor(&row_ptr, &columns, &values, NonSymmetric, Indefinite)
+    let matrix = SparseMatrix::try_convert_from_csr(&row_ptr, &columns, &values, NonSymmetric).unwrap();
+    let mut fact = Solver::try_factor(&matrix, Indefinite)
         .unwrap();
 
     let rhs = [7.0, -13.0, 2.0, -1.0];
@@ -61,8 +63,8 @@ fn dss_symmetric_posdef_factorization() {
         let columns = [0, 2, 1, 2, 0, 1, 2];
         let values = [10.0, 2.0, 5.0, 1.0, 2.0, 1.0, 4.0];
 
-        let mut fact = Solver::try_factor(&row_ptr, &columns, &values, Symmetric, PositiveDefinite)
-            .unwrap();
+        let matrix = SparseMatrix::try_convert_from_csr(&row_ptr, &columns, &values, Symmetric).unwrap();
+        let mut fact = Solver::try_factor(&matrix, PositiveDefinite).unwrap();
 
         let rhs = [2.0, -3.0, 5.0];
         let solution = fact.solve(&rhs).unwrap();
@@ -81,8 +83,8 @@ fn dss_symmetric_posdef_factorization() {
         let columns = [0, 2, 1, 2, 2];
         let values = [10.0, 2.0, 5.0, 1.0, 4.0];
 
-        let mut fact = Solver::try_factor(&row_ptr, &columns, &values, Symmetric, PositiveDefinite)
-            .unwrap();
+        let matrix = SparseMatrix::try_convert_from_csr(&row_ptr, &columns, &values, Symmetric).unwrap();
+        let mut fact = Solver::try_factor(&matrix, PositiveDefinite).unwrap();
 
         let rhs = [2.0, -3.0, 5.0];
         let solution = fact.solve(&rhs).unwrap();

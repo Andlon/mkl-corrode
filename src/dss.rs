@@ -38,20 +38,22 @@ macro_rules! dss_call {
 }
 
 // TODO: We only care about square matrices
+#[derive(Debug, PartialEq, Eq)]
 pub struct SparseMatrix<'a, T>
 where
     T: Clone
 {
     row_offsets: Cow<'a, [MKL_INT]>,
     columns: Cow<'a, [MKL_INT]>,
-    values: Cow<'a, [T]>
+    values: Cow<'a, [T]>,
+    structure: MatrixStructure
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum SparseMatrixDataError {
     NonMonotoneColumns,
     MissingExplicitDiagonal,
     UnexpectedLowerTriangularPart,
-    ColumnIndexOutOfBounds,
     NonMonotoneRowOffsets,
     EmptyRowOffsets,
     InvalidRowOffset,
@@ -61,7 +63,17 @@ pub enum SparseMatrixDataError {
 
 impl SparseMatrixDataError {
     fn is_recoverable(&self) -> bool {
-        unimplemented!()
+        use SparseMatrixDataError::*;
+        match self {
+            NonMonotoneColumns => false,
+            MissingExplicitDiagonal => true,
+            UnexpectedLowerTriangularPart => true,
+            NonMonotoneRowOffsets => false,
+            EmptyRowOffsets => false,
+            InvalidRowOffset => false,
+            InvalidColumnIndex => false,
+            InsufficientIndexSize => false
+        }
     }
 }
 
@@ -83,21 +95,25 @@ fn transmute_identical_slice<T, U>(slice: &[T]) -> Option<&[U]>
     }
 }
 
-fn rebuild_csr<'a, T, I>(row_offsets: &'a [I],
-                     columns: &'a [I],
-                     values: &'a [T],
-                     structure: MatrixStructure)
-    -> Result<SparseMatrix<'a, T>, SparseMatrixDataError>
-where
-    T: SupportedScalar,
-    usize: TryFrom<I>,
-    MKL_INT: TryFrom<I>,
-    I: Copy
+trait CsrProcessor<T> {
+    /// Called when processing of the current row has finished.
+    fn row_processed(&mut self);
+    fn visit_column(&mut self, i: MKL_INT, j: MKL_INT, v: &T) -> Result<(), SparseMatrixDataError>;
+    fn visit_missing_diagonal_entry(&mut self, i: MKL_INT) -> Result<(), SparseMatrixDataError>;
+}
+
+fn process_csr<'a, T, I>(row_offsets: &'a [I],
+                         columns: &'a [I],
+                         values: &'a [T],
+                         structure: MatrixStructure,
+                         processor: &mut impl CsrProcessor<T>)
+                         -> Result<(), SparseMatrixDataError>
+    where
+        T: SupportedScalar,
+        usize: TryFrom<I>,
+        MKL_INT: TryFrom<I>,
+        I: Copy
 {
-    let keep_lower_tri = match structure {
-        MatrixStructure::Symmetric | MatrixStructure::StructurallySymmetric => false,
-        MatrixStructure::NonSymmetric => true
-    };
     let needs_explicit_diagonal = match structure {
         MatrixStructure::Symmetric | MatrixStructure::StructurallySymmetric => false,
         MatrixStructure::NonSymmetric => true
@@ -121,24 +137,14 @@ where
         return Err(SparseMatrixDataError::EmptyRowOffsets);
     }
 
-    // TODO: Check that last offset equals number of nnz
     if nnz != offset_as_usize(*row_offsets.last().unwrap())? {
         return Err(SparseMatrixDataError::InvalidRowOffset);
     }
 
-    let mut new_row_offsets = Vec::new();
-    let mut new_columns = Vec::new();
-    let mut new_values = Vec::new();
-
-    new_row_offsets.push(0 as MKL_INT);
-
     for i in 0..num_rows {
         let current_offset = row_offsets[i];
-        let current_nnz_count = new_columns.len();
-        let row_begin = usize::try_from(current_offset)
-            .map_err(|_| SparseMatrixDataError::InvalidRowOffset)?;
-        let row_end = usize::try_from(row_offsets[i + 1])
-            .map_err(|_| SparseMatrixDataError::InvalidRowOffset)?;
+        let row_begin = offset_as_usize(current_offset)?;
+        let row_end = offset_as_usize(row_offsets[i + 1])?;
         let i = usize_as_mkl_int(i)?;
 
         if row_end < row_begin {
@@ -153,55 +159,113 @@ where
         let columns_for_row = &columns[row_begin..row_end];
         let values_for_row = &values[row_begin..row_end];
 
+        // TODO: Rename to "have_processed"
         let mut have_placed_diagonal = false;
-
         let mut prev_column = None;
         for (j, v_j) in columns_for_row.iter().zip(values_for_row) {
             let j = index_as_mkl_int(*j)?;
 
-            if j >= num_cols {
+            if j < 0 || j >= num_cols {
                 return Err(SparseMatrixDataError::InvalidColumnIndex);
             }
 
             if let Some(j_prev) = prev_column {
-                if j >= j_prev {
+                if j <= j_prev {
                     return Err(SparseMatrixDataError::NonMonotoneColumns);
                 }
             }
 
-            if j < i {
-                if keep_lower_tri {
-                    new_columns.push(j);
-                    new_values.push(*v_j);
+            if needs_explicit_diagonal {
+                if i == j {
+                    have_placed_diagonal = true;
+                    // TODO: Can remove the i < j comparison here!
+                } else if i < j && !have_placed_diagonal {
+                    processor.visit_missing_diagonal_entry(i)?;
+                    have_placed_diagonal = true;
                 }
-            } else {
-                if needs_explicit_diagonal {
-                    if i == j {
-                        have_placed_diagonal = true;
-                    } else if i < j && !have_placed_diagonal {
-                        new_columns.push(i);
-                        new_values.push(T::zero_element());
-                        have_placed_diagonal = true;
-                    }
-                }
-
-                new_columns.push(j);
-                new_values.push(*v_j);
             }
 
+            processor.visit_column(i, j, v_j)?;
             prev_column = Some(j);
         }
+        processor.row_processed();
+    }
+    Ok(())
+}
 
-        let num_row_entries = new_columns.len() - current_nnz_count;
-        let offset_diff = usize_as_mkl_int(num_row_entries)?;
-        let new_offset = index_as_mkl_int(current_offset)? + offset_diff;
-        new_row_offsets.push(new_offset);
+
+
+fn rebuild_csr<'a, T, I>(row_offsets: &'a [I],
+                     columns: &'a [I],
+                     values: &'a [T],
+                     structure: MatrixStructure)
+    -> Result<SparseMatrix<'a, T>, SparseMatrixDataError>
+where
+    T: SupportedScalar,
+    usize: TryFrom<I>,
+    MKL_INT: TryFrom<I>,
+    I: Copy
+{
+    let keep_lower_tri = match structure {
+        MatrixStructure::Symmetric | MatrixStructure::StructurallySymmetric => false,
+        MatrixStructure::NonSymmetric => true
+    };
+
+    struct CsrRebuilder<X> {
+        new_row_offsets: Vec<MKL_INT>,
+        new_columns: Vec<MKL_INT>,
+        new_values: Vec<X>,
+        current_offset: MKL_INT,
+        num_cols_in_current_row: MKL_INT,
+        keep_lower_tri: bool
     }
 
+    impl<X> CsrRebuilder<X> {
+        fn push_val(&mut self, j: MKL_INT, v_j: X) {
+            self.new_columns.push(j);
+            self.new_values.push(v_j);
+            self.num_cols_in_current_row += 1;
+        }
+    }
+
+    impl<X: SupportedScalar> CsrProcessor<X> for CsrRebuilder<X> {
+        fn row_processed(&mut self) {
+            let new_offset = self.current_offset + self.num_cols_in_current_row;
+            self.current_offset = new_offset;
+            self.num_cols_in_current_row = 0;
+            self.new_row_offsets.push(new_offset);
+        }
+
+        fn visit_column(&mut self, i: i32, j: i32, v_j: &X) -> Result<(), SparseMatrixDataError> {
+            let should_push = j >= i || (j < i && self.keep_lower_tri);
+            if should_push {
+                self.push_val(j, *v_j);
+            }
+            Ok(())
+        }
+
+        fn visit_missing_diagonal_entry(&mut self, i: i32) -> Result<(), SparseMatrixDataError> {
+            self.push_val(i, X::zero_element());
+            Ok(())
+        }
+    }
+
+    let mut rebuilder = CsrRebuilder {
+        new_row_offsets: vec![0],
+        new_columns: Vec::new(),
+        new_values: Vec::new(),
+        current_offset: 0,
+        num_cols_in_current_row: 0,
+        keep_lower_tri
+    };
+
+    process_csr(row_offsets, columns, values, structure, &mut rebuilder)?;
+
     let matrix = SparseMatrix {
-        row_offsets: Cow::Owned(new_row_offsets),
-        columns: Cow::Owned(new_columns),
-        values: Cow::Owned(new_values)
+        row_offsets: Cow::Owned(rebuilder.new_row_offsets),
+        columns: Cow::Owned(rebuilder.new_columns),
+        values: Cow::Owned(rebuilder.new_values),
+        structure
     };
     Ok(matrix)
 }
@@ -210,6 +274,22 @@ impl<'a, T> SparseMatrix<'a, T>
 where
     T: SupportedScalar
 {
+    pub fn row_offsets(&self) -> &[MKL_INT] {
+        &self.row_offsets
+    }
+
+    pub fn columns(&self) -> &[MKL_INT] {
+        &self.columns
+    }
+
+    pub fn values(&self) -> &[T] {
+        &self.values
+    }
+
+    pub fn structure(&self) -> MatrixStructure {
+        self.structure
+    }
+
     pub fn try_from_csr(_row_offsets: &'a [MKL_INT],
                         _columns: &'a [MKL_INT],
                         _values: &'a [T],
@@ -479,12 +559,13 @@ impl<T> Solver<T>
 where
     T: SupportedScalar,
 {
-    pub fn try_factor(row_ptr: &[MKL_INT],
-                      columns: &[MKL_INT],
-                      values: &[T],
-                      structure: MatrixStructure,
+    pub fn try_factor(matrix: &SparseMatrix<T>,
                       definiteness: Definiteness) -> Result<Self, Error> {
-        let nnz = columns.len();
+        let row_ptr = matrix.row_offsets();
+        let columns = matrix.columns();
+        let values = matrix.values();
+        let structure = matrix.structure();
+        let nnz = values.len();
 
         check_csr(row_ptr, columns);
         // TODO: Part of error?
