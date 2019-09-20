@@ -1,4 +1,4 @@
-use mkl_sys::{MKL_INT, MKL_DSS_SYMMETRIC_STRUCTURE, MKL_DSS_SYMMETRIC, MKL_DSS_NON_SYMMETRIC};
+use mkl_sys::{MKL_DSS_NON_SYMMETRIC, MKL_DSS_SYMMETRIC, MKL_DSS_SYMMETRIC_STRUCTURE, MKL_INT};
 
 mod solver;
 mod sparse_matrix;
@@ -33,9 +33,7 @@ mod internal {
 /// Marker trait for supported scalar types.
 ///
 /// Can not be implemented by dependent crates.
-pub unsafe trait SupportedScalar: Copy + internal::InternalScalar {
-
-}
+pub unsafe trait SupportedScalar: Copy + internal::InternalScalar {}
 
 // TODO: To support f32 we need to pass appropriate options during handle creation
 // Can have the sealed trait provide us with the appropriate option for this!

@@ -1,15 +1,16 @@
 use mkl_sys::{
-    MKL_INT, _MKL_DSS_HANDLE_t, dss_create_, dss_define_structure_, dss_delete_, dss_factor_real_,
+    _MKL_DSS_HANDLE_t, dss_create_, dss_define_structure_, dss_delete_, dss_factor_real_,
     dss_reorder_, dss_solve_real_, MKL_DSS_AUTO_ORDER, MKL_DSS_BACKWARD_SOLVE, MKL_DSS_DEFAULTS,
-    MKL_DSS_DIAGONAL_SOLVE, MKL_DSS_FORWARD_SOLVE, MKL_DSS_INDEFINITE,
-    MKL_DSS_POSITIVE_DEFINITE,
-    MKL_DSS_ZERO_BASED_INDEXING,
+    MKL_DSS_DIAGONAL_SOLVE, MKL_DSS_FORWARD_SOLVE, MKL_DSS_INDEFINITE, MKL_DSS_POSITIVE_DEFINITE,
+    MKL_DSS_ZERO_BASED_INDEXING, MKL_INT,
 };
 use std::ffi::c_void;
 use std::marker::PhantomData;
 use std::ptr::{null, null_mut};
 
 // MKL constants
+use crate::dss::{SparseMatrix, SupportedScalar};
+use core::fmt;
 use mkl_sys::{
     MKL_DSS_COL_ERR, MKL_DSS_DIAG_ERR, MKL_DSS_FAILURE, MKL_DSS_I32BIT_ERR, MKL_DSS_INVALID_OPTION,
     MKL_DSS_MSG_LVL_ERR, MKL_DSS_NOT_SQUARE, MKL_DSS_OOC_MEM_ERR, MKL_DSS_OOC_OC_ERR,
@@ -19,9 +20,7 @@ use mkl_sys::{
     MKL_DSS_SUCCESS, MKL_DSS_TERM_LVL_ERR, MKL_DSS_TOO_FEW_VALUES, MKL_DSS_TOO_MANY_VALUES,
     MKL_DSS_VALUES_ERR,
 };
-use std::fmt::{Display, Debug};
-use core::fmt;
-use crate::dss::{SupportedScalar, SparseMatrix};
+use std::fmt::{Debug, Display};
 
 /// Calls the given DSS function, noting its error code and upon a non-success result,
 /// returns an appropriate error.
@@ -36,12 +35,10 @@ macro_rules! dss_call {
     }
 }
 
-
-
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Error {
     code: ErrorCode,
-    routine: &'static str
+    routine: &'static str,
 }
 
 impl Error {
@@ -60,13 +57,16 @@ impl Error {
 
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "Error in routine {}. Return code: {:?}", self.routine(), self.return_code())
+        write!(
+            f,
+            "Error in routine {}. Return code: {:?}",
+            self.routine(),
+            self.return_code()
+        )
     }
 }
 
-impl std::error::Error for Error {
-
-}
+impl std::error::Error for Error {}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ErrorCode {
@@ -177,7 +177,9 @@ struct Handle {
 impl Handle {
     fn create(options: MKL_INT) -> Result<Self, Error> {
         let mut handle = null_mut();
-        unsafe { dss_call! { dss_create_(&mut handle, &options) }}
+        unsafe {
+            dss_call! { dss_create_(&mut handle, &options) }
+        }
         Ok(Self { handle })
     }
 }
@@ -220,11 +222,10 @@ pub struct Solver<T> {
 }
 
 impl<T> Solver<T>
-    where
-        T: SupportedScalar,
+where
+    T: SupportedScalar,
 {
-    pub fn try_factor(matrix: &SparseMatrix<T>,
-                      definiteness: Definiteness) -> Result<Self, Error> {
+    pub fn try_factor(matrix: &SparseMatrix<T>, definiteness: Definiteness) -> Result<Self, Error> {
         let row_ptr = matrix.row_offsets();
         let columns = matrix.columns();
         let values = matrix.values();
@@ -244,25 +245,29 @@ impl<T> Solver<T>
         let mut handle = Handle::create(create_opts)?;
 
         let define_opts = structure.to_mkl_opt();
-        unsafe { dss_call!{ dss_define_structure_(
-                &mut handle.handle,
-                &define_opts,
-                row_ptr.as_ptr(),
-                // TODO: What if num_rows, nnz or num_cols > max(MKL_INT)?
-                &(num_rows as MKL_INT),
-                &(num_cols as MKL_INT),
-                columns.as_ptr(),
-                &(nnz as MKL_INT),
-        ) }}
+        unsafe {
+            dss_call! { dss_define_structure_(
+                    &mut handle.handle,
+                    &define_opts,
+                    row_ptr.as_ptr(),
+                    // TODO: What if num_rows, nnz or num_cols > max(MKL_INT)?
+                    &(num_rows as MKL_INT),
+                    &(num_cols as MKL_INT),
+                    columns.as_ptr(),
+                    &(nnz as MKL_INT),
+            ) }
+        }
 
         let reorder_opts = MKL_DSS_AUTO_ORDER;
-        unsafe { dss_call!{ dss_reorder_(&mut handle.handle, &reorder_opts, null()) }};
+        unsafe {
+            dss_call! { dss_reorder_(&mut handle.handle, &reorder_opts, null()) }
+        };
 
         let mut factorization = Solver {
             handle,
             num_rows,
             nnz,
-            marker: PhantomData
+            marker: PhantomData,
         };
         factorization.refactor(values, definiteness)?;
         Ok(factorization)
@@ -273,11 +278,13 @@ impl<T> Solver<T>
         assert_eq!(values.len(), self.nnz);
 
         let opts = definiteness.to_mkl_opt();
-        unsafe { dss_call!{ dss_factor_real_(
-            &mut self.handle.handle,
-            &opts,
-            values.as_ptr() as *const c_void,
-        ) }};
+        unsafe {
+            dss_call! { dss_factor_real_(
+                &mut self.handle.handle,
+                &opts,
+                values.as_ptr() as *const c_void,
+            ) }
+        };
         Ok(())
     }
 
@@ -298,17 +305,19 @@ impl<T> Solver<T>
         );
         assert_eq!(solution.len(), rhs.len());
 
-        unsafe { dss_call! {
-            dss_solve_real_(
-                &mut self.handle.handle,
-                &(MKL_DSS_FORWARD_SOLVE),
-                rhs.as_ptr() as *const c_void,
-                // TODO: What if num_rhs > max(MKL_INT)? Absurd situation, but it could maybe
-                // lead to undefined behavior, so we need to handle it
-                &(num_rhs as MKL_INT),
-                solution.as_mut_ptr() as *mut c_void,
-            )
-        }};
+        unsafe {
+            dss_call! {
+                dss_solve_real_(
+                    &mut self.handle.handle,
+                    &(MKL_DSS_FORWARD_SOLVE),
+                    rhs.as_ptr() as *const c_void,
+                    // TODO: What if num_rhs > max(MKL_INT)? Absurd situation, but it could maybe
+                    // lead to undefined behavior, so we need to handle it
+                    &(num_rhs as MKL_INT),
+                    solution.as_mut_ptr() as *mut c_void,
+                )
+            }
+        };
         Ok(())
     }
 
@@ -323,16 +332,18 @@ impl<T> Solver<T>
         );
         assert_eq!(solution.len(), rhs.len());
 
-        unsafe { dss_call! {
-            dss_solve_real_(
-                &mut self.handle.handle,
-                &(MKL_DSS_DIAGONAL_SOLVE),
-                rhs.as_ptr() as *const c_void,
-                // TODO: See other comment about this coercion cast
-                &(num_rhs as MKL_INT),
-                solution.as_mut_ptr() as *mut c_void,
-            )
-        } };
+        unsafe {
+            dss_call! {
+                dss_solve_real_(
+                    &mut self.handle.handle,
+                    &(MKL_DSS_DIAGONAL_SOLVE),
+                    rhs.as_ptr() as *const c_void,
+                    // TODO: See other comment about this coercion cast
+                    &(num_rhs as MKL_INT),
+                    solution.as_mut_ptr() as *mut c_void,
+                )
+            }
+        };
         Ok(())
     }
 
@@ -347,23 +358,30 @@ impl<T> Solver<T>
         );
         assert_eq!(solution.len(), rhs.len());
 
-        unsafe { dss_call! {
-            dss_solve_real_(
-                &mut self.handle.handle,
-                &(MKL_DSS_BACKWARD_SOLVE),
-                rhs.as_ptr() as *const c_void,
-                // TODO: See other comment about num_rhs and `as` cast
-                &(num_rhs as MKL_INT),
-                solution.as_mut_ptr() as *mut c_void,
-            )
-        }};
+        unsafe {
+            dss_call! {
+                dss_solve_real_(
+                    &mut self.handle.handle,
+                    &(MKL_DSS_BACKWARD_SOLVE),
+                    rhs.as_ptr() as *const c_void,
+                    // TODO: See other comment about num_rhs and `as` cast
+                    &(num_rhs as MKL_INT),
+                    solution.as_mut_ptr() as *mut c_void,
+                )
+            }
+        };
         Ok(())
     }
 
     /// Convenience function for calling the different substitution phases.
     ///
     /// `buffer` must have same size as `solution`.
-    pub fn solve_into(&mut self, solution: &mut [T], buffer: &mut [T], rhs: &[T]) -> Result<(), Error> {
+    pub fn solve_into(
+        &mut self,
+        solution: &mut [T],
+        buffer: &mut [T],
+        rhs: &[T],
+    ) -> Result<(), Error> {
         let y = solution;
         self.forward_substitute_into(y, rhs)?;
 
@@ -377,8 +395,7 @@ impl<T> Solver<T>
     }
 
     /// Convenience function that internally allocates buffer storage and output storage.
-    pub fn solve(&mut self, rhs: &[T]) -> Result<Vec<T>, Error>
-    {
+    pub fn solve(&mut self, rhs: &[T]) -> Result<Vec<T>, Error> {
         let mut solution = vec![T::zero_element(); rhs.len()];
         let mut buffer = vec![T::zero_element(); rhs.len()];
         self.solve_into(&mut solution, &mut buffer, rhs)?;
