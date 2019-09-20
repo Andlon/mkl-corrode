@@ -97,7 +97,7 @@ fn transmute_identical_slice<T, U>(slice: &[T]) -> Option<&[U]>
 
 trait CsrProcessor<T> {
     /// Called when processing of the current row has finished.
-    fn row_processed(&mut self);
+    fn row_processed(&mut self) {}
     fn visit_column(&mut self, i: MKL_INT, j: MKL_INT, v: &T) -> Result<(), SparseMatrixDataError>;
     fn visit_missing_diagonal_entry(&mut self, i: MKL_INT) -> Result<(), SparseMatrixDataError>;
 }
@@ -192,8 +192,6 @@ fn process_csr<'a, T, I>(row_offsets: &'a [I],
     }
     Ok(())
 }
-
-
 
 fn rebuild_csr<'a, T, I>(row_offsets: &'a [I],
                      columns: &'a [I],
@@ -290,13 +288,45 @@ where
         self.structure
     }
 
-    pub fn try_from_csr(_row_offsets: &'a [MKL_INT],
-                        _columns: &'a [MKL_INT],
-                        _values: &'a [T],
-                        _structure: MatrixStructure)
+    pub fn try_from_csr(row_offsets: &'a [MKL_INT],
+                        columns: &'a [MKL_INT],
+                        values: &'a [T],
+                        structure: MatrixStructure)
         -> Result<Self, SparseMatrixDataError>
     {
-        unimplemented!()
+        let allow_lower_tri = match structure {
+            MatrixStructure::Symmetric | MatrixStructure::StructurallySymmetric => false,
+            MatrixStructure::NonSymmetric => true
+        };
+
+        struct CsrCheck {
+            allow_lower_tri: bool
+        }
+
+        impl<X: SupportedScalar> CsrProcessor<X> for CsrCheck {
+            fn visit_column(&mut self, i: i32, j: i32, _: &X) -> Result<(), SparseMatrixDataError> {
+                if !self.allow_lower_tri && j < i {
+                    Err(SparseMatrixDataError::UnexpectedLowerTriangularPart)
+                } else {
+                    Ok(())
+                }
+            }
+
+            fn visit_missing_diagonal_entry(&mut self, _: i32) -> Result<(), SparseMatrixDataError> {
+                Err(SparseMatrixDataError::MissingExplicitDiagonal)
+            }
+        }
+
+        let mut checker = CsrCheck { allow_lower_tri };
+        process_csr(row_offsets, columns, values, structure, &mut checker)?;
+
+        let matrix = SparseMatrix {
+            row_offsets: Cow::Borrowed(row_offsets),
+            columns: Cow::Borrowed(columns),
+            values: Cow::Borrowed(values),
+            structure
+        };
+        Ok(matrix)
     }
 
     pub fn try_convert_from_csr<I>(row_offsets: &'a [I],
