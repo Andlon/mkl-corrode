@@ -2,7 +2,7 @@ use mkl_sys::{
     _MKL_DSS_HANDLE_t, dss_create_, dss_define_structure_, dss_delete_, dss_factor_real_,
     dss_reorder_, dss_solve_real_, MKL_DSS_AUTO_ORDER, MKL_DSS_BACKWARD_SOLVE, MKL_DSS_DEFAULTS,
     MKL_DSS_DIAGONAL_SOLVE, MKL_DSS_FORWARD_SOLVE, MKL_DSS_INDEFINITE, MKL_DSS_POSITIVE_DEFINITE,
-    MKL_DSS_ZERO_BASED_INDEXING, MKL_INT,
+    MKL_DSS_ZERO_BASED_INDEXING, MKL_INT, MKL_DSS_METIS_OPENMP_ORDER
 };
 use std::ffi::c_void;
 use std::marker::PhantomData;
@@ -214,6 +214,28 @@ impl Definiteness {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct SolverOptions {
+    parallel_reorder: bool
+}
+
+impl Default for SolverOptions {
+    fn default() -> Self {
+        Self {
+            parallel_reorder: false
+        }
+    }
+}
+
+impl SolverOptions {
+    pub fn parallel_reorder(self, enable: bool) -> Self {
+        Self {
+            parallel_reorder: enable,
+            .. self
+        }
+    }
+}
+
 pub struct Solver<T> {
     handle: Handle,
     marker: PhantomData<T>,
@@ -225,7 +247,9 @@ impl<T> Solver<T>
 where
     T: SupportedScalar,
 {
-    pub fn try_factor(matrix: &SparseMatrix<T>, definiteness: Definiteness) -> Result<Self, Error> {
+    pub fn try_factor_with_opts(matrix: &SparseMatrix<T>,
+                                definiteness: Definiteness,
+                                options: &SolverOptions) -> Result<Self, Error> {
         let row_ptr = matrix.row_offsets();
         let columns = matrix.columns();
         let values = matrix.values();
@@ -258,7 +282,10 @@ where
             ) }
         }
 
-        let reorder_opts = MKL_DSS_AUTO_ORDER;
+        let mut reorder_opts = MKL_DSS_AUTO_ORDER;
+        if options.parallel_reorder {
+            reorder_opts += MKL_DSS_METIS_OPENMP_ORDER;
+        }
         unsafe {
             dss_call! { dss_reorder_(&mut handle.handle, &reorder_opts, null()) }
         };
@@ -271,6 +298,11 @@ where
         };
         factorization.refactor(values, definiteness)?;
         Ok(factorization)
+    }
+
+    /// Factors with default options.
+    pub fn try_factor(matrix: &SparseMatrix<T>, definiteness: Definiteness) -> Result<Self, Error> {
+        Self::try_factor_with_opts(matrix, definiteness, &SolverOptions::default())
     }
 
     pub fn refactor(&mut self, values: &[T], definiteness: Definiteness) -> Result<(), Error> {
