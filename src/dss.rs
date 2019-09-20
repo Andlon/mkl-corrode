@@ -23,6 +23,8 @@ use std::borrow::Cow;
 use std::convert::TryFrom;
 use std::any::{TypeId};
 use std::mem::transmute;
+use std::fmt::{Display, Debug};
+use core::fmt;
 
 /// Calls the given DSS function, noting its error code and upon a non-success result,
 /// returns an appropriate error.
@@ -75,6 +77,16 @@ impl SparseMatrixDataError {
             InsufficientIndexSize => false
         }
     }
+}
+
+impl Display for SparseMatrixDataError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "Error in sparse matrix data: {:?}", self)
+    }
+}
+
+impl std::error::Error for SparseMatrixDataError {
+
 }
 
 fn is_same_type<T, U>() -> bool
@@ -372,9 +384,19 @@ impl Error {
         self.routine
     }
 
-    pub fn new(code: ErrorCode, routine: &'static str) -> Self {
+    fn new(code: ErrorCode, routine: &'static str) -> Self {
         Self { code, routine }
     }
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "Error in routine {}. Return code: {:?}", self.routine(), self.return_code())
+    }
+}
+
+impl std::error::Error for Error {
+
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
