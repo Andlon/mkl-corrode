@@ -6,7 +6,7 @@ use mkl_corrode::dss::Definiteness::Indefinite;
 use mkl_corrode::dss::MatrixStructure::NonSymmetric;
 use Definiteness::PositiveDefinite;
 use MatrixStructure::Symmetric;
-use mkl_corrode::sparse::{CsrMatrixHandle, MatrixDescription, SparseFillMode, SparseMatrixType};
+use mkl_corrode::sparse::{CsrMatrixHandle, MatrixDescription, SparseMatrixType};
 use mkl_corrode::extended_eigensolver::k_largest_eigenvalues;
 
 #[test]

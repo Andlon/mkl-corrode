@@ -9,7 +9,6 @@ pub struct EigenResult<T>
     eigenvectors: Vec<T>,
     eigenvalues: Vec<T>,
     residuals: Vec<T>,
-    k: usize
 }
 
 impl<T> EigenResult<T> {
@@ -19,6 +18,10 @@ impl<T> EigenResult<T> {
 
     pub fn eigenvectors(&self) -> &[T] {
         &self.eigenvectors
+    }
+
+    pub fn residuals(&self) -> &[T] {
+        &self.residuals
     }
 }
 
@@ -38,9 +41,9 @@ where
         let code = unsafe { mkl_sparse_ee_init(opts.as_mut_ptr()) };
         SparseStatusError::new_result(code, "mkl_sparse_ee_init")?;
 
-        let mut eigvals = vec![T::zero_element(); k];
-        let mut eigvecs = vec![T::zero_element(); k * matrix.cols()];
-        let mut res = vec![T::zero_element(); k];
+        let mut eigenvalues = vec![T::zero_element(); k];
+        let mut eigenvectors = vec![T::zero_element(); k * matrix.cols()];
+        let mut residuals = vec![T::zero_element(); k];
 
         let mut which = 'L' as i8;
         let code = unsafe { mkl_sparse_d_ev(&mut which,
@@ -49,15 +52,18 @@ where
                                             description.to_mkl_descr(),
                                             k_in,
                                             &mut k_out,
-                                            eigvals.as_mut_ptr() as *mut f64,
-                                            eigvecs.as_mut_ptr() as *mut f64,
-                                            res.as_mut_ptr() as *mut f64) };
+                                            eigenvalues.as_mut_ptr() as *mut f64,
+                                            eigenvectors.as_mut_ptr() as *mut f64,
+                                            residuals.as_mut_ptr() as *mut f64) };
         SparseStatusError::new_result(code, "mkl_sparse_d_ev")?;
+        let k_out = k_out as usize;
+        eigenvalues.truncate(k_out);
+        eigenvectors.truncate(k_out);
+        residuals.truncate(k_out);
         Ok(EigenResult {
-            eigenvectors: eigvecs,
-            eigenvalues: eigvals,
-            residuals: res,
-            k: k_out as usize
+            eigenvectors,
+            eigenvalues,
+            residuals
         })
     } else {
         panic!("Unsupported type");
