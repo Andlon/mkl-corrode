@@ -1,15 +1,15 @@
 use mkl_sys::{
     _MKL_DSS_HANDLE_t, dss_create_, dss_define_structure_, dss_delete_, dss_factor_real_,
     dss_reorder_, dss_solve_real_, MKL_DSS_AUTO_ORDER, MKL_DSS_BACKWARD_SOLVE, MKL_DSS_DEFAULTS,
-    MKL_DSS_DIAGONAL_SOLVE, MKL_DSS_FORWARD_SOLVE, MKL_DSS_INDEFINITE, MKL_DSS_POSITIVE_DEFINITE,
-    MKL_DSS_ZERO_BASED_INDEXING, MKL_INT, MKL_DSS_METIS_OPENMP_ORDER
+    MKL_DSS_DIAGONAL_SOLVE, MKL_DSS_FORWARD_SOLVE, MKL_DSS_INDEFINITE, MKL_DSS_METIS_OPENMP_ORDER,
+    MKL_DSS_POSITIVE_DEFINITE, MKL_DSS_ZERO_BASED_INDEXING, MKL_INT,
 };
 use std::ffi::c_void;
 use std::marker::PhantomData;
 use std::ptr::{null, null_mut};
 
 // MKL constants
-use crate::dss::{SparseMatrix};
+use crate::dss::SparseMatrix;
 use crate::SupportedScalar;
 use core::fmt;
 use mkl_sys::{
@@ -217,13 +217,13 @@ impl Definiteness {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct SolverOptions {
-    parallel_reorder: bool
+    parallel_reorder: bool,
 }
 
 impl Default for SolverOptions {
     fn default() -> Self {
         Self {
-            parallel_reorder: false
+            parallel_reorder: false,
         }
     }
 }
@@ -232,7 +232,7 @@ impl SolverOptions {
     pub fn parallel_reorder(self, enable: bool) -> Self {
         Self {
             parallel_reorder: enable,
-            .. self
+            ..self
         }
     }
 }
@@ -248,9 +248,11 @@ impl<T> Solver<T>
 where
     T: SupportedScalar,
 {
-    pub fn try_factor_with_opts(matrix: &SparseMatrix<T>,
-                                definiteness: Definiteness,
-                                options: &SolverOptions) -> Result<Self, Error> {
+    pub fn try_factor_with_opts(
+        matrix: &SparseMatrix<T>,
+        definiteness: Definiteness,
+        options: &SolverOptions,
+    ) -> Result<Self, Error> {
         let row_ptr = matrix.row_offsets();
         let columns = matrix.columns();
         let values = matrix.values();

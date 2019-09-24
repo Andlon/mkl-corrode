@@ -1,11 +1,10 @@
-use crate::sparse::{CsrMatrixHandle, SparseStatusError, MatrixDescription};
-use crate::{SupportedScalar};
+use crate::sparse::{CsrMatrixHandle, MatrixDescription, SparseStatusError};
 use crate::util::is_same_type;
+use crate::SupportedScalar;
 
 use mkl_sys::{mkl_sparse_d_ev, mkl_sparse_ee_init, MKL_INT};
 
-pub struct EigenResult<T>
-{
+pub struct EigenResult<T> {
     eigenvectors: Vec<T>,
     eigenvalues: Vec<T>,
     residuals: Vec<T>,
@@ -25,12 +24,13 @@ impl<T> EigenResult<T> {
     }
 }
 
-pub fn k_largest_eigenvalues<T>(matrix: &CsrMatrixHandle<T>,
-                                description: &MatrixDescription,
-                                k: usize)
-    -> Result<EigenResult<T>, SparseStatusError>
+pub fn k_largest_eigenvalues<T>(
+    matrix: &CsrMatrixHandle<T>,
+    description: &MatrixDescription,
+    k: usize,
+) -> Result<EigenResult<T>, SparseStatusError>
 where
-    T: SupportedScalar
+    T: SupportedScalar,
 {
     let k_in = k as MKL_INT;
     let mut k_out = 0 as MKL_INT;
@@ -46,15 +46,19 @@ where
         let mut residuals = vec![T::zero_element(); k];
 
         let mut which = 'L' as i8;
-        let code = unsafe { mkl_sparse_d_ev(&mut which,
-                                            opts.as_mut_ptr(),
-                                            matrix.handle,
-                                            description.to_mkl_descr(),
-                                            k_in,
-                                            &mut k_out,
-                                            eigenvalues.as_mut_ptr() as *mut f64,
-                                            eigenvectors.as_mut_ptr() as *mut f64,
-                                            residuals.as_mut_ptr() as *mut f64) };
+        let code = unsafe {
+            mkl_sparse_d_ev(
+                &mut which,
+                opts.as_mut_ptr(),
+                matrix.handle,
+                description.to_mkl_descr(),
+                k_in,
+                &mut k_out,
+                eigenvalues.as_mut_ptr() as *mut f64,
+                eigenvectors.as_mut_ptr() as *mut f64,
+                residuals.as_mut_ptr() as *mut f64,
+            )
+        };
         SparseStatusError::new_result(code, "mkl_sparse_d_ev")?;
         let k_out = k_out as usize;
         eigenvalues.truncate(k_out);
@@ -63,7 +67,7 @@ where
         Ok(EigenResult {
             eigenvectors,
             eigenvalues,
-            residuals
+            residuals,
         })
     } else {
         panic!("Unsupported type");

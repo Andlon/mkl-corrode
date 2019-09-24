@@ -4,10 +4,10 @@ use approx::assert_abs_diff_eq;
 
 use mkl_corrode::dss::Definiteness::Indefinite;
 use mkl_corrode::dss::MatrixStructure::NonSymmetric;
+use mkl_corrode::extended_eigensolver::k_largest_eigenvalues;
+use mkl_corrode::sparse::{CsrMatrixHandle, MatrixDescription, SparseMatrixType};
 use Definiteness::PositiveDefinite;
 use MatrixStructure::Symmetric;
-use mkl_corrode::sparse::{CsrMatrixHandle, MatrixDescription, SparseMatrixType};
-use mkl_corrode::extended_eigensolver::k_largest_eigenvalues;
 
 #[test]
 fn dss_1x1_factorization() {
@@ -108,9 +108,16 @@ fn csr_unsafe_construction_destruction() {
     let columns = [0, 2, 1, 2, 0, 1, 2];
     let values = [10.0, 2.0, 5.0, 1.0, 2.0, 1.0, 4.0];
 
-    let matrix = unsafe { CsrMatrixHandle::from_raw_csr_data(3, 3,
-                                                             &row_ptr[..row_ptr.len() - 1],
-                                                             &row_ptr[1..], &columns, &values) };
+    let matrix = unsafe {
+        CsrMatrixHandle::from_raw_csr_data(
+            3,
+            3,
+            &row_ptr[..row_ptr.len() - 1],
+            &row_ptr[1..],
+            &columns,
+            &values,
+        )
+    };
     drop(matrix);
 
     // Check that dropping the handle does not "destroy" the input data
@@ -130,16 +137,26 @@ fn basic_k_largest_eigenvalues() {
     let row_ptr = [0, 2, 4, 7];
     let columns = [0, 2, 1, 2, 0, 1, 2];
     let values = [10.0, 2.0, 5.0, 1.0, 2.0, 1.0, 4.0];
-    let matrix = unsafe { CsrMatrixHandle::from_raw_csr_data(3, 3,
-                                                             &row_ptr[..row_ptr.len() - 1],
-                                                             &row_ptr[1..], &columns, &values) }
-        .unwrap();
+    let matrix = unsafe {
+        CsrMatrixHandle::from_raw_csr_data(
+            3,
+            3,
+            &row_ptr[..row_ptr.len() - 1],
+            &row_ptr[1..],
+            &columns,
+            &values,
+        )
+    }
+    .unwrap();
 
-    let description = MatrixDescription::default()
-        .with_type(SparseMatrixType::General);
+    let description = MatrixDescription::default().with_type(SparseMatrixType::General);
     let result = k_largest_eigenvalues(&matrix, &description, 3).unwrap();
 
     let expected_eigvals = vec![2.94606902, 5.43309508, 10.6208359];
 
-    assert_abs_diff_eq!(result.eigenvalues(), expected_eigvals.as_ref(), epsilon = 10e-6);
+    assert_abs_diff_eq!(
+        result.eigenvalues(),
+        expected_eigvals.as_ref(),
+        epsilon = 10e-6
+    );
 }

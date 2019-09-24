@@ -1,8 +1,8 @@
 pub extern crate mkl_sys;
 
 pub mod dss;
-pub mod sparse;
 pub mod extended_eigensolver;
+pub mod sparse;
 
 mod util;
 
