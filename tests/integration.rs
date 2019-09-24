@@ -6,6 +6,7 @@ use mkl_corrode::dss::Definiteness::Indefinite;
 use mkl_corrode::dss::MatrixStructure::NonSymmetric;
 use Definiteness::PositiveDefinite;
 use MatrixStructure::Symmetric;
+use mkl_corrode::sparse::CsrMatrixHandle;
 
 #[test]
 fn dss_1x1_factorization() {
@@ -94,4 +95,27 @@ fn dss_symmetric_posdef_factorization() {
 
         assert_abs_diff_eq!(solution.as_ref(), expected_sol.as_ref(), epsilon = 1e-6);
     }
+}
+
+#[test]
+fn csr_unsafe_construction_destruction() {
+    // Matrix
+    // [10, 0, 2,
+    //   0, 5, 1
+    //   2  1  4]
+    let row_ptr = [0, 2, 4, 7];
+    let columns = [0, 2, 1, 2, 0, 1, 2];
+    let values = [10.0, 2.0, 5.0, 1.0, 2.0, 1.0, 4.0];
+
+    let matrix = unsafe { CsrMatrixHandle::from_raw_csr_data(3, 3,
+                                                             &row_ptr[..row_ptr.len() - 1],
+                                                             &row_ptr[1..], &columns, &values) };
+    drop(matrix);
+
+    // Check that dropping the handle does not "destroy" the input data
+    // (note: it may be necessary to run this test through Valgrind and/or adress/memory sanitizers
+    // to make sure that it works as intended.
+    assert_eq!(row_ptr, [0, 2, 4, 7]);
+    assert_eq!(columns, [0, 2, 1, 2, 0, 1, 2]);
+    assert_eq!(values, [10.0, 2.0, 5.0, 1.0, 2.0, 1.0, 4.0]);
 }

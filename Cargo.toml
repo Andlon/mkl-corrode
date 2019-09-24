@@ -9,7 +9,7 @@ ilp64 = [ "mkl-sys/ilp64" ]
 openmp = [ "mkl-sys/openmp" ]
 
 [dependencies]
-mkl-sys = { git = "https://github.com/Andlon/mkl-sys", branch = "master", features = [ "dss" ] }
+mkl-sys = { git = "https://github.com/Andlon/mkl-sys", branch = "master", features = [ "dss", "inspector-executor" ] }
 
 [dev-dependencies]
 approx = "0.3"

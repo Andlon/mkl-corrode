@@ -3,11 +3,11 @@ use crate::dss::{MatrixStructure, SupportedScalar};
 use mkl_sys::MKL_INT;
 
 use core::fmt;
-use std::any::TypeId;
 use std::borrow::Cow;
 use std::convert::TryFrom;
 use std::fmt::{Debug, Display};
-use std::mem::transmute;
+
+use crate::util::{is_same_type, transmute_identical_slice};
 
 // TODO: We only care about square matrices
 #[derive(Debug, PartialEq, Eq)]
@@ -56,27 +56,6 @@ impl Display for SparseMatrixDataError {
 }
 
 impl std::error::Error for SparseMatrixDataError {}
-
-fn is_same_type<T, U>() -> bool
-where
-    T: 'static,
-    U: 'static,
-{
-    TypeId::of::<T>() == TypeId::of::<U>()
-}
-
-// TODO: Move to utils file or something?
-fn transmute_identical_slice<T, U>(slice: &[T]) -> Option<&[U]>
-where
-    T: 'static,
-    U: 'static,
-{
-    if is_same_type::<T, U>() {
-        Some(unsafe { transmute(slice) })
-    } else {
-        None
-    }
-}
 
 trait CsrProcessor<T> {
     /// Called when processing of the current row has finished.
