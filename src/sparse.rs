@@ -1,20 +1,12 @@
-use mkl_sys::{MKL_INT, mkl_sparse_d_create_csr, sparse_matrix_t, mkl_sparse_destroy};
+use mkl_sys::{MKL_INT, mkl_sparse_d_create_csr, sparse_matrix_t, mkl_sparse_destroy,
+    sparse_matrix_type_t, sparse_fill_mode_t, sparse_diag_type_t,
+    matrix_descr};
 use std::marker::PhantomData;
 use std::ptr::null_mut;
 use crate::util::is_same_type;
 
 use mkl_sys::{sparse_status_t};
-
-mod internal {
-    use core::fmt;
-
-    pub trait InternalScalar: 'static + fmt::Debug {}
-
-    impl InternalScalar for f64 {}
-}
-
-pub trait SupportedScalar: internal::InternalScalar {}
-impl SupportedScalar for f64 {}
+use crate::SupportedScalar;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum SparseStatusCode {

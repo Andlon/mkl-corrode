@@ -1,4 +1,5 @@
-use crate::dss::{MatrixStructure, SupportedScalar};
+use crate::dss::{MatrixStructure};
+use crate::SupportedScalar;
 
 use mkl_sys::MKL_INT;
 

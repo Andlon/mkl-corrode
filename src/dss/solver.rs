@@ -9,7 +9,8 @@ use std::marker::PhantomData;
 use std::ptr::{null, null_mut};
 
 // MKL constants
-use crate::dss::{SparseMatrix, SupportedScalar};
+use crate::dss::{SparseMatrix};
+use crate::SupportedScalar;
 use core::fmt;
 use mkl_sys::{
     MKL_DSS_COL_ERR, MKL_DSS_DIAG_ERR, MKL_DSS_FAILURE, MKL_DSS_I32BIT_ERR, MKL_DSS_INVALID_OPTION,
