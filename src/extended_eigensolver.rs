@@ -27,14 +27,15 @@ impl<T> EigenResult<T> {
 #[derive(Debug, PartialEq, Eq)]
 enum WhichType {
     Largest,
-    Smallest
+    Smallest,
 }
 
-fn extremal_eigenvalues<T>(which: WhichType,
-                           matrix: &CsrMatrixHandle<T>,
-                           description: &MatrixDescription,
-                           k: usize)
-    -> Result<EigenResult<T>, SparseStatusError>
+fn extremal_eigenvalues<T>(
+    which: WhichType,
+    matrix: &CsrMatrixHandle<T>,
+    description: &MatrixDescription,
+    k: usize,
+) -> Result<EigenResult<T>, SparseStatusError>
 where
     T: SupportedScalar,
 {
@@ -53,7 +54,7 @@ where
 
         let mut which = match which {
             WhichType::Largest => 'L' as i8,
-            WhichType::Smallest => 'S' as i8
+            WhichType::Smallest => 'S' as i8,
         };
 
         let code = unsafe {
@@ -109,8 +110,8 @@ pub fn k_smallest_eigenvalues<T>(
     description: &MatrixDescription,
     k: usize,
 ) -> Result<EigenResult<T>, SparseStatusError>
-    where
-        T: SupportedScalar,
+where
+    T: SupportedScalar,
 {
     extremal_eigenvalues(WhichType::Smallest, matrix, description, k)
 }
