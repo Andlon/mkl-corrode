@@ -4,7 +4,7 @@ use approx::assert_abs_diff_eq;
 
 use mkl_corrode::dss::Definiteness::Indefinite;
 use mkl_corrode::dss::MatrixStructure::NonSymmetric;
-use mkl_corrode::extended_eigensolver::k_largest_eigenvalues;
+use mkl_corrode::extended_eigensolver::{k_largest_eigenvalues, k_smallest_eigenvalues};
 use mkl_corrode::sparse::{CsrMatrixHandle, MatrixDescription, SparseMatrixType};
 use Definiteness::PositiveDefinite;
 use MatrixStructure::Symmetric;
@@ -129,7 +129,7 @@ fn csr_unsafe_construction_destruction() {
 }
 
 #[test]
-fn basic_k_largest_eigenvalues() {
+fn basic_k_smallest_largest_eigenvalues() {
     // Matrix
     // [10, 0, 2,
     //   0, 5, 1
@@ -150,13 +150,48 @@ fn basic_k_largest_eigenvalues() {
     .unwrap();
 
     let description = MatrixDescription::default().with_type(SparseMatrixType::General);
-    let result = k_largest_eigenvalues(&matrix, &description, 3).unwrap();
-
     let expected_eigvals = vec![2.94606902, 5.43309508, 10.6208359];
+    let largest1 = k_largest_eigenvalues(&matrix, &description, 1).unwrap();
+    let largest2 = k_largest_eigenvalues(&matrix, &description, 2).unwrap();
+    let largest3 = k_largest_eigenvalues(&matrix, &description, 3).unwrap();
 
     assert_abs_diff_eq!(
-        result.eigenvalues(),
-        expected_eigvals.as_ref(),
-        epsilon = 10e-6
+        largest1.eigenvalues(),
+        &expected_eigvals[2..=2],
+        epsilon = 1e-6
+    );
+
+    assert_abs_diff_eq!(
+        largest2.eigenvalues(),
+        &expected_eigvals[1..=2],
+        epsilon = 1e-6
+    );
+
+    assert_abs_diff_eq!(
+        largest3.eigenvalues(),
+        &expected_eigvals[0..=2],
+        epsilon = 1e-6
+    );
+
+    let smallest1 = k_smallest_eigenvalues(&matrix, &description, 1).unwrap();
+    let smallest2 = k_smallest_eigenvalues(&matrix, &description, 2).unwrap();
+    let smallest3 = k_smallest_eigenvalues(&matrix, &description, 3).unwrap();
+
+    assert_abs_diff_eq!(
+        smallest1.eigenvalues(),
+        &expected_eigvals[0..=0],
+        epsilon = 1e-6
+    );
+
+    assert_abs_diff_eq!(
+        smallest2.eigenvalues(),
+        &expected_eigvals[0..=1],
+        epsilon = 1e-6
+    );
+
+    assert_abs_diff_eq!(
+        smallest3.eigenvalues(),
+        &expected_eigvals[0..=2],
+        epsilon = 1e-6
     );
 }

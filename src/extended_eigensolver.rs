@@ -24,11 +24,17 @@ impl<T> EigenResult<T> {
     }
 }
 
-pub fn k_largest_eigenvalues<T>(
-    matrix: &CsrMatrixHandle<T>,
-    description: &MatrixDescription,
-    k: usize,
-) -> Result<EigenResult<T>, SparseStatusError>
+#[derive(Debug, PartialEq, Eq)]
+enum WhichType {
+    Largest,
+    Smallest
+}
+
+fn extremal_eigenvalues<T>(which: WhichType,
+                           matrix: &CsrMatrixHandle<T>,
+                           description: &MatrixDescription,
+                           k: usize)
+    -> Result<EigenResult<T>, SparseStatusError>
 where
     T: SupportedScalar,
 {
@@ -45,7 +51,11 @@ where
         let mut eigenvectors = vec![T::zero_element(); k * matrix.cols()];
         let mut residuals = vec![T::zero_element(); k];
 
-        let mut which = 'L' as i8;
+        let mut which = match which {
+            WhichType::Largest => 'L' as i8,
+            WhichType::Smallest => 'S' as i8
+        };
+
         let code = unsafe {
             mkl_sparse_d_ev(
                 &mut which,
@@ -72,4 +82,35 @@ where
     } else {
         panic!("Unsupported type");
     }
+}
+
+/// Attempts to compute the `k` largest eigenvalues of the given matrix, with the given description.
+///
+/// Note that the returned number of eigenvalues might be smaller than requested (see MKL
+/// docs for details).
+pub fn k_largest_eigenvalues<T>(
+    matrix: &CsrMatrixHandle<T>,
+    description: &MatrixDescription,
+    k: usize,
+) -> Result<EigenResult<T>, SparseStatusError>
+where
+    T: SupportedScalar,
+{
+    extremal_eigenvalues(WhichType::Largest, matrix, description, k)
+}
+
+/// Attempts to compute the `k` smallest eigenvalues of the given matrix, with the given description.
+///
+/// Note that the returned number of eigenvalues might be smaller than requested (see MKL
+/// docs for details).
+// TODO: Extend to general sparse matrices, not just CSR
+pub fn k_smallest_eigenvalues<T>(
+    matrix: &CsrMatrixHandle<T>,
+    description: &MatrixDescription,
+    k: usize,
+) -> Result<EigenResult<T>, SparseStatusError>
+    where
+        T: SupportedScalar,
+{
+    extremal_eigenvalues(WhichType::Smallest, matrix, description, k)
 }
