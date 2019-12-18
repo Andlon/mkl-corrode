@@ -8,8 +8,10 @@ edition = "2018"
 ilp64 = [ "mkl-sys/ilp64" ]
 openmp = [ "mkl-sys/openmp" ]
 
-[dependencies]
-mkl-sys = { git = "https://github.com/Andlon/mkl-sys", branch = "master", features = [ "dss", "inspector-executor" ] }
+[dependencies.mkl-sys]
+git = "https://github.com/Andlon/mkl-sys"
+rev = "dc7eaaaccd0804d39b9d04958024b20d43a10827"
+features = [ "dss", "inspector-executor" ]
 
 [dev-dependencies]
 approx = "0.3"
