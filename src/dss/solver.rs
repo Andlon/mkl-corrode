@@ -244,6 +244,16 @@ pub struct Solver<T> {
     nnz: usize,
 }
 
+impl<T> Debug for Solver<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct(std::any::type_name::<Self>())
+            .field("handle", &"<n/a>")
+            .field("num_rows", &self.num_rows)
+            .field("nnz", &self.nnz)
+            .finish()
+    }
+}
+
 impl<T> Solver<T>
 where
     T: SupportedScalar,

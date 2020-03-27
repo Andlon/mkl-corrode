@@ -195,3 +195,23 @@ fn basic_k_smallest_largest_eigenvalues() {
         epsilon = 1e-6
     );
 }
+
+#[test]
+fn dss_solver_debug() {
+    use std::fmt::Write;
+
+    let row_ptr = [0, 1];
+    let columns = [0];
+    let values = [0.0];
+
+    // Construct dummy matrix
+    let matrix = SparseMatrix::try_convert_from_csr(&row_ptr, &columns, &values, NonSymmetric)
+        .unwrap();
+    let solver = Solver::try_factor(&matrix, Indefinite).unwrap();
+
+    let mut debug_str = String::new();
+    write!(&mut debug_str, "{:?}", solver).unwrap();
+
+    assert_eq!(debug_str,
+               "mkl_corrode::dss::solver::Solver<f64> { handle: \"<n/a>\", num_rows: 1, nnz: 1 }");
+}
