@@ -4,7 +4,7 @@ use approx::assert_abs_diff_eq;
 
 use mkl_corrode::dss::Definiteness::Indefinite;
 use mkl_corrode::dss::MatrixStructure::NonSymmetric;
-use mkl_corrode::extended_eigensolver::{k_largest_eigenvalues, k_smallest_eigenvalues};
+use mkl_corrode::extended_eigensolver::{k_largest_eigenvalues, k_smallest_eigenvalues, sparse_svd, Which, SingularVectorType};
 use mkl_corrode::sparse::{CsrMatrixHandle, MatrixDescription, SparseMatrixType};
 use Definiteness::PositiveDefinite;
 use MatrixStructure::Symmetric;
@@ -189,6 +189,77 @@ fn basic_k_smallest_largest_eigenvalues() {
         &expected_eigvals[0..=2],
         epsilon = 1e-6
     );
+}
+
+#[test]
+fn basic_sparse_svd() {
+    // Matrix
+    // [10, -5, 0,
+    //   0,  5, 1
+    //   2   0  4]
+    let row_ptr = [0, 2, 4, 6];
+    let columns = [0, 1, 1, 2, 0, 2];
+    let values = [10.0, -5.0, 5.0, 1.0, 2.0, 4.0];
+    let matrix = CsrMatrixHandle::from_csr_data(
+            3,
+            3,
+            &row_ptr[..row_ptr.len() - 1],
+            &row_ptr[1..],
+            &columns,
+            &values,
+        ).unwrap();
+
+    let description = MatrixDescription::default();
+
+    // "All" eigenvalues
+    {
+        let result = sparse_svd(Which::Largest,
+                                SingularVectorType::Left,
+                                &matrix,
+                                &description,
+                                3)
+            .unwrap();
+
+        let expected_singular_values = vec![
+            3.155542242601061, 5.201796372629078, 11.575140070550471
+        ];
+
+        let mut sorted_values = result.singular_values().to_vec();
+        sorted_values.sort_by(|a, b| a.partial_cmp(&b).unwrap());
+
+        assert_abs_diff_eq!(
+            sorted_values.as_slice(),
+            expected_singular_values.as_slice(),
+            epsilon = 1e-9
+        );
+    }
+
+    // Get smallest eigenvalue
+    {
+        let result = sparse_svd(Which::Smallest,
+                                SingularVectorType::Left,
+                                &matrix,
+                                &description,
+                                1)
+            .unwrap();
+
+        assert_abs_diff_eq!(result.singular_values()[0], 3.155542242601061, epsilon=1e-9);
+    }
+
+    // Get largest eigenvalue
+    {
+        let result = sparse_svd(Which::Largest,
+                                SingularVectorType::Left,
+                                &matrix,
+                                &description,
+                                1)
+            .unwrap();
+
+        assert_abs_diff_eq!(result.singular_values()[0], 11.575140070550471, epsilon=1e-9);
+    }
+
+    // TODO: Test singular vectors
+
 }
 
 #[test]
