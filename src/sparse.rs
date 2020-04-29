@@ -110,6 +110,40 @@ where
         self.cols
     }
 
+    pub fn from_csr_data(
+        rows: usize,
+        cols: usize,
+        row_begin: &'a [MKL_INT],
+        row_end: &'a [MKL_INT],
+        columns: &'a [MKL_INT],
+        values: &'a [T]
+    ) -> Result<Self, SparseStatusError> {
+        assert_eq!(row_begin.len(), rows, "row_begin length and rows must be equal");
+        assert_eq!(row_end.len(), rows, "row_end length and rows must be equal");
+        assert_eq!(columns.len(), values.len(), "columns and values must have equal length");
+
+        assert_eq!(row_begin.first().unwrap_or(&0), &0);
+        assert!(row_end.first().unwrap_or(&0) >= &0);
+
+        let is_monotonic = |slice: &[_]| (1 .. slice.len())
+            .all(|row_idx| slice[row_idx] >= slice[row_idx - 1]);
+        assert!(is_monotonic(row_begin));
+        assert!(is_monotonic(row_end));
+
+        // Since the numbers are monotonic, it follows that the last element is
+        // non-negative, and therefore fits inside a usize
+        assert_eq!(row_end.last().copied().unwrap_or(0) as usize, values.len());
+
+        // TODO: Do column indices in each row need to be sorted? I don't think so...
+        // MKL docs don't say that in the description of the format, at least.
+        assert!(columns.iter().all(|index| index >= &0 && (*index as usize) < cols),
+                "column indices must lie in the interval [0, cols)");
+
+        unsafe {
+            Self::from_raw_csr_data(rows, cols, row_begin, row_end, columns, values)
+        }
+    }
+
     /// TODO: Change this to be more general?
     /// TODO: Build safe abstraction on top
     pub unsafe fn from_raw_csr_data(

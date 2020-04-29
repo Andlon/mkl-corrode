@@ -108,16 +108,14 @@ fn csr_unsafe_construction_destruction() {
     let columns = [0, 2, 1, 2, 0, 1, 2];
     let values = [10.0, 2.0, 5.0, 1.0, 2.0, 1.0, 4.0];
 
-    let matrix = unsafe {
-        CsrMatrixHandle::from_raw_csr_data(
-            3,
-            3,
-            &row_ptr[..row_ptr.len() - 1],
-            &row_ptr[1..],
-            &columns,
-            &values,
-        )
-    };
+    let matrix = CsrMatrixHandle::from_csr_data(
+        3,
+        3,
+        &row_ptr[..row_ptr.len() - 1],
+        &row_ptr[1..],
+        &columns,
+        &values,
+    ).unwrap();
     drop(matrix);
 
     // Check that dropping the handle does not "destroy" the input data
@@ -137,17 +135,14 @@ fn basic_k_smallest_largest_eigenvalues() {
     let row_ptr = [0, 2, 4, 7];
     let columns = [0, 2, 1, 2, 0, 1, 2];
     let values = [10.0, 2.0, 5.0, 1.0, 2.0, 1.0, 4.0];
-    let matrix = unsafe {
-        CsrMatrixHandle::from_raw_csr_data(
-            3,
-            3,
-            &row_ptr[..row_ptr.len() - 1],
-            &row_ptr[1..],
-            &columns,
-            &values,
-        )
-    }
-    .unwrap();
+    let matrix = CsrMatrixHandle::from_csr_data(
+        3,
+        3,
+        &row_ptr[..row_ptr.len() - 1],
+        &row_ptr[1..],
+        &columns,
+        &values,
+    ).unwrap();
 
     let description = MatrixDescription::default().with_type(SparseMatrixType::General);
     let expected_eigvals = vec![2.94606902, 5.43309508, 10.6208359];
