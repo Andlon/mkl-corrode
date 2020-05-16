@@ -9,6 +9,7 @@ mod util;
 mod internal {
     pub trait InternalScalar {
         fn zero_element() -> Self;
+        fn try_as_f64(&self) -> Option<f64>;
     }
 }
 
@@ -23,6 +24,10 @@ pub unsafe trait SupportedScalar: 'static + Copy + internal::InternalScalar {}
 impl internal::InternalScalar for f64 {
     fn zero_element() -> Self {
         0.0
+    }
+
+    fn try_as_f64(&self) -> Option<f64> {
+        Some(*self)
     }
 }
 //unsafe impl SupportedScalar for f32 {}

@@ -5,7 +5,7 @@ use approx::assert_abs_diff_eq;
 use mkl_corrode::dss::Definiteness::Indefinite;
 use mkl_corrode::dss::MatrixStructure::NonSymmetric;
 use mkl_corrode::extended_eigensolver::{k_largest_eigenvalues, k_smallest_eigenvalues, sparse_svd, Which, SingularVectorType};
-use mkl_corrode::sparse::{CsrMatrixHandle, MatrixDescription, SparseMatrixType};
+use mkl_corrode::sparse::{CsrMatrixHandle, MatrixDescription, SparseMatrixType, spmv_csr, SparseOperation};
 use Definiteness::PositiveDefinite;
 use MatrixStructure::Symmetric;
 
@@ -280,4 +280,45 @@ fn dss_solver_debug() {
 
     assert_eq!(debug_str,
                "mkl_corrode::dss::solver::Solver<f64> { handle: \"<n/a>\", num_rows: 1, nnz: 1 }");
+}
+
+#[test]
+fn sparse_spmv_csr_plus_update() {
+    // Matrix:
+    // [10, 0, 2, 7,
+    //   3, 6, 0, 0,
+    //   0, 7, 9, 1,
+    //   0, 2, 0, 3]
+
+    let row_ptr = [0, 3, 5, 8, 10];
+    let columns = [0, 2, 3, 0, 1, 1, 2, 3, 1, 3];
+    let values = [10.0, 2.0, 7.0, 3.0, 6.0, 7.0, 9.0, 1.0, 2.0, 3.0];
+    let csr = CsrMatrixHandle::from_csr_data(4, 4,
+                                             &row_ptr[..row_ptr.len() - 1],
+                                             &row_ptr[1..], &columns, &values).unwrap();
+
+    let alpha = 2.0;
+    let x = [3.0, -2.0, 1.0, 5.0];
+    let beta = 3.0;
+    let mut y = [2.0, 3.0, 1.0, -4.0];
+    let description = MatrixDescription::default();
+    spmv_csr(SparseOperation::NonTranspose, alpha, &csr, &description, &x, beta, &mut y).unwrap();
+
+    assert_abs_diff_eq!(y[0], 140.0, epsilon=1e-14);
+    assert_abs_diff_eq!(y[1], 3.0, epsilon=1e-14);
+    assert_abs_diff_eq!(y[2], 3.0, epsilon=1e-14);
+    assert_abs_diff_eq!(y[3], 10.0, epsilon=1e-14);
+
+    // TODO: Re-enable these tests if this ever becomes possible in the future.
+    // Currently there seems to be no way to directly update values of a CSR matrix (only BSR).
+    // Try to update values and re-run the operation
+    // let new_values = [8.0, 4.0, 3.0, 2.0, 6.0, -5.0, 8.0, -1.0, 2.0, -4.0];
+    // csr.update_values(&new_values).unwrap();
+    // let mut y = [2.0, 3.0, 1.0, -4.0];
+    // spmv_csr(SparseOperation::NonTranspose, alpha, &csr, &description, &x, beta, &mut y).unwrap();
+    //
+    // assert_abs_diff_eq!(y[0], 92.0, epsilon=1e-14);
+    // assert_abs_diff_eq!(y[1], -3.0, epsilon=1e-14);
+    // assert_abs_diff_eq!(y[2], 29.0, epsilon=1e-14);
+    // assert_abs_diff_eq!(y[3], 20.0, epsilon=1e-14);
 }

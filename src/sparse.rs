@@ -1,10 +1,13 @@
-use crate::util::is_same_type;
+use crate::util::{is_same_type, transmute_identical_slice, transmute_identical_slice_mut};
 use mkl_sys::{
-    matrix_descr, mkl_sparse_d_create_csr, mkl_sparse_destroy, sparse_diag_type_t,
-    sparse_fill_mode_t, sparse_matrix_t, sparse_matrix_type_t, MKL_INT,
+    matrix_descr, mkl_sparse_d_create_csr, mkl_sparse_destroy,
+    mkl_sparse_d_mv,
+    sparse_diag_type_t, sparse_fill_mode_t, sparse_matrix_t, sparse_matrix_type_t,
+    sparse_operation_t,
+    MKL_INT,
 };
 use std::marker::PhantomData;
-use std::ptr::null_mut;
+use std::ptr::{null_mut};
 
 use crate::SupportedScalar;
 use mkl_sys::sparse_status_t;
@@ -77,6 +80,7 @@ pub struct CsrMatrixHandle<'a, T> {
     marker: PhantomData<&'a T>,
     rows: usize,
     cols: usize,
+    nnz: usize,
     pub(crate) handle: sparse_matrix_t,
 }
 
@@ -108,6 +112,10 @@ where
 
     pub fn cols(&self) -> usize {
         self.cols
+    }
+
+    pub fn nnz(&self) -> usize {
+        self.nnz
     }
 
     pub fn from_csr_data(
@@ -143,6 +151,35 @@ where
             Self::from_raw_csr_data(rows, cols, row_begin, row_end, columns, values)
         }
     }
+
+    // TODO: Apparently this routine is only supported for BSR according to Intel docs?
+    // That's very disappointing...
+    // pub fn update_values(&mut self, new_values: &[T]) -> Result<(), SparseStatusError> {
+    //     assert_eq!(self.nnz(), new_values.len(),
+    //                "Number of new values must be consistent with matrix");
+    //
+    //     unsafe {
+    //         if is_same_type::<T, f64>() {
+    //             let status = mkl_sparse_d_update_values(
+    //                 self.handle,
+    //                 // TODO: This isn't necessarily technically safe, because MKL_INT
+    //                 // may be 32-bit and new_values might exceed the size of MKL_INT
+    //                 // on 64-bit platforms
+    //                 new_values.len() as MKL_INT,
+    //                 null(),
+    //                 null(),
+    //                 // TODO: This looks very bad, but MKL does not have a const pointer in its API,
+    //                 // so we have to trust them that they do not modify the array.
+    //                 new_values.as_ptr() as *mut f64
+    //             );
+    //             SparseStatusError::new_result(status, "mkl_sparse_d_update_values")?;
+    //             Ok(())
+    //         } else {
+    //             // TODO: Implement more types
+    //             panic!("Unsupported type")
+    //         }
+    //     }
+    // }
 
     /// TODO: Change this to be more general?
     /// TODO: Build safe abstraction on top
@@ -180,11 +217,63 @@ where
                 rows,
                 cols,
                 handle,
+                nnz: values.len()
             })
         } else {
             // TODO: Implement more types
             panic!("Unsupported type")
         }
+    }
+}
+
+pub enum SparseOperation {
+    NonTranspose,
+    Transpose,
+    ConjugateTranspose
+}
+
+impl SparseOperation {
+    fn to_mkl_value(&self) -> sparse_operation_t::Type {
+        match self {
+            Self::NonTranspose => sparse_operation_t::SPARSE_OPERATION_NON_TRANSPOSE,
+            Self::Transpose => sparse_operation_t::SPARSE_OPERATION_TRANSPOSE,
+            Self::ConjugateTranspose => sparse_operation_t::SPARSE_OPERATION_CONJUGATE_TRANSPOSE
+        }
+    }
+}
+
+/// y <- alpha * op(matrix) * x + beta * y
+pub fn spmv_csr<T>(operation: SparseOperation,
+                   alpha: T,
+                   matrix: &CsrMatrixHandle<T>,
+                   description: &MatrixDescription,
+                   x: &[T],
+                   beta: T,
+                   y: &mut [T])
+-> Result<(), SparseStatusError>
+where
+    T: SupportedScalar
+{
+    assert_eq!(y.len(), matrix.rows(),
+               "Number of rows of matrix must be identical to length of y.");
+    assert_eq!(x.len(), matrix.cols(),
+               "Number of columns of matrix must be identical to length of y.");
+    if is_same_type::<T, f64>() {
+        unsafe {
+            let status = mkl_sparse_d_mv(
+                operation.to_mkl_value(), //TODO
+                alpha.try_as_f64().unwrap(),
+                matrix.handle,
+                description.to_mkl_descr(),
+                transmute_identical_slice(x).unwrap().as_ptr(),
+                beta.try_as_f64().unwrap(),
+                transmute_identical_slice_mut(y).unwrap().as_mut_ptr()
+            );
+            SparseStatusError::new_result(status, "mkl_sparse_d_mv")?;
+            Ok(())
+        }
+    } else {
+        panic!("Unsupported type");
     }
 }
 
