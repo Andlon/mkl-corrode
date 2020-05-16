@@ -1,13 +1,14 @@
 use crate::util::{is_same_type, transmute_identical_slice, transmute_identical_slice_mut};
 use mkl_sys::{
     matrix_descr, mkl_sparse_d_create_csr, mkl_sparse_destroy,
-    mkl_sparse_d_mv,
+    mkl_sparse_d_mv, mkl_sparse_set_mv_hint,
     sparse_diag_type_t, sparse_fill_mode_t, sparse_matrix_t, sparse_matrix_type_t,
-    sparse_operation_t,
+    sparse_operation_t, mkl_sparse_optimize,
     MKL_INT,
 };
 use std::marker::PhantomData;
 use std::ptr::{null_mut};
+use std::convert::TryFrom;
 
 use crate::SupportedScalar;
 use mkl_sys::sparse_status_t;
@@ -224,6 +225,42 @@ where
             panic!("Unsupported type")
         }
     }
+
+    // TODO: Is it correct that this does not take self by mut ref? I think it's tantamount
+    // to MKL just modifying some internal cached variables, but not the data itself...?
+    pub fn set_mv_hint(&self, operation: SparseOperation,
+                       description: &MatrixDescription,
+                       expected_calls: usize)
+        -> Result<(), SparseStatusError>
+    {
+        if is_same_type::<T, f64>() {
+            unsafe {
+                let status = mkl_sparse_set_mv_hint(
+                    self.handle,
+                    operation.to_mkl_value(),
+                    description.to_mkl_descr(),
+                    MKL_INT::try_from(expected_calls)
+                        .expect("TODO: How to deal with numbers that don't fit in MKL_INT?")
+                );
+                SparseStatusError::new_result(status, "mkl_sparse_set_mv_hint")?;
+                Ok(())
+            }
+        } else {
+            panic!("Unsupported type");
+        }
+    }
+
+    pub fn optimize(&self) -> Result<(), SparseStatusError> {
+        if is_same_type::<T, f64>() {
+            unsafe {
+                let status = mkl_sparse_optimize(self.handle);
+                SparseStatusError::new_result(status, "mkl_sparse_optimize")?;
+                Ok(())
+            }
+        } else {
+            panic!("Unsupported type");
+        }
+    }
 }
 
 pub enum SparseOperation {
@@ -261,7 +298,7 @@ where
     if is_same_type::<T, f64>() {
         unsafe {
             let status = mkl_sparse_d_mv(
-                operation.to_mkl_value(), //TODO
+                operation.to_mkl_value(),
                 alpha.try_as_f64().unwrap(),
                 matrix.handle,
                 description.to_mkl_descr(),
