@@ -198,13 +198,13 @@ impl Handle {
         // it past them).
         let mut output = [0.0f64; 64];
         SolverStatistics {
-            reorder_time: unsafe { dss_call!(dss_statistics_(&mut self.handle, &MKL_DSS_DEFAULTS, dbg!(reorder_str).as_ptr(), output.as_mut_ptr())) }
+            reorder_time: unsafe { dss_call!(dss_statistics_(&mut self.handle, &MKL_DSS_DEFAULTS, reorder_str.as_ptr(), output.as_mut_ptr())) }
                 .ok()
                 .map(|_| output[0]),
-            factor_time: unsafe { dss_call!(dss_statistics_(&mut self.handle, &MKL_DSS_DEFAULTS, dbg!(factor_str).as_ptr(), output.as_mut_ptr())) }
+            factor_time: unsafe { dss_call!(dss_statistics_(&mut self.handle, &MKL_DSS_DEFAULTS, factor_str.as_ptr(), output.as_mut_ptr())) }
                 .ok()
                 .map(|_| output[0]),
-            solve_time: unsafe { dss_call!(dss_statistics_(&mut self.handle, &MKL_DSS_DEFAULTS, dbg!(solve_str).as_ptr(), output.as_mut_ptr())) }
+            solve_time: unsafe { dss_call!(dss_statistics_(&mut self.handle, &MKL_DSS_DEFAULTS, solve_str.as_ptr(), output.as_mut_ptr())) }
                 .ok()
                 .map(|_| output[0]),
         }
