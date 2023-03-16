@@ -198,13 +198,13 @@ impl Handle {
         // it past them).
         let mut output = [0.0f64; 64];
         SolverStatistics {
-            reorder_time: unsafe { dss_call!(dss_statistics_(&mut self.handle, &MKL_DSS_DEFAULTS, reorder_str.as_ptr(), output.as_mut_ptr())) }
+            reorder_time: unsafe { dss_call!(dss_statistics_(&mut self.handle, &MKL_DSS_DEFAULTS, dbg!(reorder_str).as_ptr(), output.as_mut_ptr())) }
                 .ok()
                 .map(|_| output[0]),
-            factor_time: unsafe { dss_call!(dss_statistics_(&mut self.handle, &MKL_DSS_DEFAULTS, factor_str.as_ptr(), output.as_mut_ptr())) }
+            factor_time: unsafe { dss_call!(dss_statistics_(&mut self.handle, &MKL_DSS_DEFAULTS, dbg!(factor_str).as_ptr(), output.as_mut_ptr())) }
                 .ok()
                 .map(|_| output[0]),
-            solve_time: unsafe { dss_call!(dss_statistics_(&mut self.handle, &MKL_DSS_DEFAULTS, solve_str.as_ptr(), output.as_mut_ptr())) }
+            solve_time: unsafe { dss_call!(dss_statistics_(&mut self.handle, &MKL_DSS_DEFAULTS, dbg!(solve_str).as_ptr(), output.as_mut_ptr())) }
                 .ok()
                 .map(|_| output[0]),
         }
@@ -520,6 +520,13 @@ where
     }
 
     /// Return statistics on the solver phases.
+    ///
+    /// TODO: Currently this is kinda broken. According to Intel docs, we should be able to
+    /// request statistics for phases that we have not yet entered, in which case we'd return
+    /// an error. Unfortunately, this is *not* the case. Instead, MKL happily returns a
+    /// "success" error code, and instead prints a fatal error to the terminal.
+    /// The result is that results of stages that not yet been completed might be completely wrong,
+    /// and instead identical to whatever previous stage did *not* fail.
     pub fn get_statistics(&mut self) -> SolverStatistics {
         self.handle.get_statistics()
     }
