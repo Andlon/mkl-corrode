@@ -19,7 +19,7 @@ use mkl_sys::{
     MKL_DSS_REORDER_ERR, MKL_DSS_ROW_ERR, MKL_DSS_STATE_ERR, MKL_DSS_STATISTICS_INVALID_MATRIX,
     MKL_DSS_STATISTICS_INVALID_STATE, MKL_DSS_STATISTICS_INVALID_STRING, MKL_DSS_STRUCTURE_ERR,
     MKL_DSS_SUCCESS, MKL_DSS_TERM_LVL_ERR, MKL_DSS_TOO_FEW_VALUES, MKL_DSS_TOO_MANY_VALUES,
-    MKL_DSS_VALUES_ERR,
+    MKL_DSS_VALUES_ERR, MKL_DSS_MSG_LVL_INFO, MKL_DSS_MSG_LVL_WARNING, MKL_DSS_MSG_LVL_ERROR, MKL_DSS_MSG_LVL_FATAL
 };
 use std::fmt::{Debug, Display};
 
@@ -215,15 +215,37 @@ impl Definiteness {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+/// The message log level for the DSS solver.
+#[derive(Debug, Clone)]
+pub enum MessageLevel {
+    Info,
+    Warning,
+    Error,
+    Fatal
+}
+
+impl MessageLevel {
+    fn to_mkl_int(&self) -> MKL_INT {
+        match self {
+            MessageLevel::Info => MKL_DSS_MSG_LVL_INFO,
+            MessageLevel::Warning => MKL_DSS_MSG_LVL_WARNING,
+            MessageLevel::Error => MKL_DSS_MSG_LVL_ERROR,
+            MessageLevel::Fatal => MKL_DSS_MSG_LVL_FATAL,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct SolverOptions {
     parallel_reorder: bool,
+    message_level: MessageLevel,
 }
 
 impl Default for SolverOptions {
     fn default() -> Self {
         Self {
             parallel_reorder: false,
+            message_level: MessageLevel::Fatal,
         }
     }
 }
@@ -234,6 +256,14 @@ impl SolverOptions {
             parallel_reorder: enable,
             ..self
         }
+    }
+
+    /// Sets the message level of the solver.
+    ///
+    /// By default, only "Fatal" messages will be printed to stdout/stderr. Increasing the
+    /// message level may cause the DSS solver to produce more output.
+    pub fn message_level(self, message_level: MessageLevel) -> Self {
+        Self { message_level, .. self }
     }
 }
 
@@ -277,8 +307,9 @@ where
         let num_rows = row_ptr.len() - 1;
         let num_cols = num_rows;
 
-        // TODO: Enable tweaking messages!
-        let create_opts = MKL_DSS_DEFAULTS + MKL_DSS_ZERO_BASED_INDEXING;
+        let create_opts = MKL_DSS_DEFAULTS
+            + MKL_DSS_ZERO_BASED_INDEXING
+            + options.message_level.to_mkl_int();
         let mut handle = Handle::create(create_opts)?;
 
         let define_opts = structure.to_mkl_opt();
