@@ -1,10 +1,5 @@
-use mkl_sys::{
-    _MKL_DSS_HANDLE_t, dss_create_, dss_define_structure_, dss_delete_, dss_factor_real_,
-    dss_reorder_, dss_solve_real_, MKL_DSS_AUTO_ORDER, MKL_DSS_BACKWARD_SOLVE, MKL_DSS_DEFAULTS,
-    MKL_DSS_DIAGONAL_SOLVE, MKL_DSS_FORWARD_SOLVE, MKL_DSS_INDEFINITE, MKL_DSS_METIS_OPENMP_ORDER,
-    MKL_DSS_POSITIVE_DEFINITE, MKL_DSS_ZERO_BASED_INDEXING, MKL_INT,
-};
-use std::ffi::c_void;
+use mkl_sys::{_MKL_DSS_HANDLE_t, dss_create_, dss_define_structure_, dss_delete_, dss_factor_real_, dss_reorder_, dss_solve_real_, dss_statistics_, MKL_DSS_AUTO_ORDER, MKL_DSS_BACKWARD_SOLVE, MKL_DSS_DEFAULTS, MKL_DSS_DIAGONAL_SOLVE, MKL_DSS_FORWARD_SOLVE, MKL_DSS_INDEFINITE, MKL_DSS_METIS_OPENMP_ORDER, MKL_DSS_POSITIVE_DEFINITE, MKL_DSS_ZERO_BASED_INDEXING, MKL_INT};
+use std::ffi::{c_void, CStr};
 use std::marker::PhantomData;
 use std::ptr::{null, null_mut};
 
@@ -19,7 +14,7 @@ use mkl_sys::{
     MKL_DSS_REORDER_ERR, MKL_DSS_ROW_ERR, MKL_DSS_STATE_ERR, MKL_DSS_STATISTICS_INVALID_MATRIX,
     MKL_DSS_STATISTICS_INVALID_STATE, MKL_DSS_STATISTICS_INVALID_STRING, MKL_DSS_STRUCTURE_ERR,
     MKL_DSS_SUCCESS, MKL_DSS_TERM_LVL_ERR, MKL_DSS_TOO_FEW_VALUES, MKL_DSS_TOO_MANY_VALUES,
-    MKL_DSS_VALUES_ERR,
+    MKL_DSS_VALUES_ERR, MKL_DSS_MSG_LVL_INFO, MKL_DSS_MSG_LVL_WARNING, MKL_DSS_MSG_LVL_ERROR, MKL_DSS_MSG_LVL_FATAL
 };
 use std::fmt::{Debug, Display};
 
@@ -28,10 +23,15 @@ use std::fmt::{Debug, Display};
 macro_rules! dss_call {
     ($routine:ident ($($arg: tt)*)) => {
         {
-            let code = $routine($($arg)*);
-            if code != MKL_DSS_SUCCESS {
-                return Err(Error::new(ErrorCode::from_return_code(code), stringify!($routine)));
-            }
+            let result: Result<(), Error> = {
+                let code = $routine($($arg)*);
+                if code == MKL_DSS_SUCCESS {
+                    Ok(())
+                } else {
+                    Err(Error::new(ErrorCode::from_return_code(code), stringify!($routine)))
+                }
+            };
+            result
         }
     }
 }
@@ -180,8 +180,34 @@ impl Handle {
         let mut handle = null_mut();
         unsafe {
             dss_call! { dss_create_(&mut handle, &options) }
-        }
+        }?;
         Ok(Self { handle })
+    }
+
+    fn get_statistics(&mut self) -> SolverStatistics {
+        let reorder_str = CStr::from_bytes_with_nul(b"ReorderTime\0").unwrap();
+        let factor_str = CStr::from_bytes_with_nul(b"FactorTime\0").unwrap();
+        let solve_str = CStr::from_bytes_with_nul(b"SolveTime\0").unwrap();
+
+        // SAFETY: The output buffer must be large enough to accommodate outputs for all
+        // options that we require. This has to be checked with MKL docs, since
+        // it might write more info to the buffer than we need right now.
+        // For now we use a much too large buffer to hopefully help avoid any undefined behavior
+        // due to, for example, MKL adding additional outputs for the same strings in the future
+        // (that would be terrible, but given the state of the MKL library I wouldn't put
+        // it past them).
+        let mut output = [0.0f64; 64];
+        SolverStatistics {
+            reorder_time: unsafe { dss_call!(dss_statistics_(&mut self.handle, &MKL_DSS_DEFAULTS, reorder_str.as_ptr(), output.as_mut_ptr())) }
+                .ok()
+                .map(|_| output[0]),
+            factor_time: unsafe { dss_call!(dss_statistics_(&mut self.handle, &MKL_DSS_DEFAULTS, factor_str.as_ptr(), output.as_mut_ptr())) }
+                .ok()
+                .map(|_| output[0]),
+            solve_time: unsafe { dss_call!(dss_statistics_(&mut self.handle, &MKL_DSS_DEFAULTS, solve_str.as_ptr(), output.as_mut_ptr())) }
+                .ok()
+                .map(|_| output[0]),
+        }
     }
 }
 
@@ -197,6 +223,19 @@ impl Drop for Handle {
             }
         }
     }
+}
+
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+/// Statistics, such as timing.
+///
+/// In general, statistics are only provided for completed phases, in which case the statistic
+/// corresponding to the most recent execution of the phase is given.
+pub struct SolverStatistics {
+    pub reorder_time: Option<f64>,
+    pub factor_time: Option<f64>,
+    pub solve_time: Option<f64>,
+    // determinant_time: Option<f64>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -215,15 +254,37 @@ impl Definiteness {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+/// The message log level for the DSS solver.
+#[derive(Debug, Clone)]
+pub enum MessageLevel {
+    Info,
+    Warning,
+    Error,
+    Fatal
+}
+
+impl MessageLevel {
+    fn to_mkl_int(&self) -> MKL_INT {
+        match self {
+            MessageLevel::Info => MKL_DSS_MSG_LVL_INFO,
+            MessageLevel::Warning => MKL_DSS_MSG_LVL_WARNING,
+            MessageLevel::Error => MKL_DSS_MSG_LVL_ERROR,
+            MessageLevel::Fatal => MKL_DSS_MSG_LVL_FATAL,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct SolverOptions {
     parallel_reorder: bool,
+    message_level: MessageLevel,
 }
 
 impl Default for SolverOptions {
     fn default() -> Self {
         Self {
             parallel_reorder: false,
+            message_level: MessageLevel::Fatal,
         }
     }
 }
@@ -234,6 +295,14 @@ impl SolverOptions {
             parallel_reorder: enable,
             ..self
         }
+    }
+
+    /// Sets the message level of the solver.
+    ///
+    /// By default, only "Fatal" messages will be printed to stdout/stderr. Increasing the
+    /// message level may cause the DSS solver to produce more output.
+    pub fn message_level(self, message_level: MessageLevel) -> Self {
+        Self { message_level, .. self }
     }
 }
 
@@ -277,8 +346,9 @@ where
         let num_rows = row_ptr.len() - 1;
         let num_cols = num_rows;
 
-        // TODO: Enable tweaking messages!
-        let create_opts = MKL_DSS_DEFAULTS + MKL_DSS_ZERO_BASED_INDEXING;
+        let create_opts = MKL_DSS_DEFAULTS
+            + MKL_DSS_ZERO_BASED_INDEXING
+            + options.message_level.to_mkl_int();
         let mut handle = Handle::create(create_opts)?;
 
         let define_opts = structure.to_mkl_opt();
@@ -293,7 +363,7 @@ where
                     columns.as_ptr(),
                     &(nnz as MKL_INT),
             ) }
-        }
+        }?;
 
         let reorder_opts;
         if options.parallel_reorder {
@@ -303,7 +373,7 @@ where
         }
         unsafe {
             dss_call! { dss_reorder_(&mut handle.handle, &reorder_opts, null()) }
-        };
+        }?;
 
         let mut factorization = Solver {
             handle,
@@ -331,7 +401,7 @@ where
                 &opts,
                 values.as_ptr() as *const c_void,
             ) }
-        };
+        }?;
         Ok(())
     }
 
@@ -364,7 +434,7 @@ where
                     solution.as_mut_ptr() as *mut c_void,
                 )
             }
-        };
+        }?;
         Ok(())
     }
 
@@ -390,7 +460,7 @@ where
                     solution.as_mut_ptr() as *mut c_void,
                 )
             }
-        };
+        }?;
         Ok(())
     }
 
@@ -416,7 +486,7 @@ where
                     solution.as_mut_ptr() as *mut c_void,
                 )
             }
-        };
+        }?;
         Ok(())
     }
 
@@ -447,5 +517,17 @@ where
         let mut buffer = vec![T::zero_element(); rhs.len()];
         self.solve_into(&mut solution, &mut buffer, rhs)?;
         Ok(solution)
+    }
+
+    /// Return statistics on the solver phases.
+    ///
+    /// TODO: Currently this is kinda broken. According to Intel docs, we should be able to
+    /// request statistics for phases that we have not yet entered, in which case we'd return
+    /// an error. Unfortunately, this is *not* the case. Instead, MKL happily returns a
+    /// "success" error code, and instead prints a fatal error to the terminal.
+    /// The result is that results of stages that not yet been completed might be completely wrong,
+    /// and instead identical to whatever previous stage did *not* fail.
+    pub fn get_statistics(&mut self) -> SolverStatistics {
+        self.handle.get_statistics()
     }
 }
