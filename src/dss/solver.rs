@@ -1,10 +1,5 @@
-use mkl_sys::{
-    _MKL_DSS_HANDLE_t, dss_create_, dss_define_structure_, dss_delete_, dss_factor_real_,
-    dss_reorder_, dss_solve_real_, MKL_DSS_AUTO_ORDER, MKL_DSS_BACKWARD_SOLVE, MKL_DSS_DEFAULTS,
-    MKL_DSS_DIAGONAL_SOLVE, MKL_DSS_FORWARD_SOLVE, MKL_DSS_INDEFINITE, MKL_DSS_METIS_OPENMP_ORDER,
-    MKL_DSS_POSITIVE_DEFINITE, MKL_DSS_ZERO_BASED_INDEXING, MKL_INT,
-};
-use std::ffi::c_void;
+use mkl_sys::{_MKL_DSS_HANDLE_t, dss_create_, dss_define_structure_, dss_delete_, dss_factor_real_, dss_reorder_, dss_solve_real_, dss_statistics_, MKL_DSS_AUTO_ORDER, MKL_DSS_BACKWARD_SOLVE, MKL_DSS_DEFAULTS, MKL_DSS_DIAGONAL_SOLVE, MKL_DSS_FORWARD_SOLVE, MKL_DSS_INDEFINITE, MKL_DSS_METIS_OPENMP_ORDER, MKL_DSS_POSITIVE_DEFINITE, MKL_DSS_ZERO_BASED_INDEXING, MKL_INT};
+use std::ffi::{c_void, CStr};
 use std::marker::PhantomData;
 use std::ptr::{null, null_mut};
 
@@ -28,10 +23,15 @@ use std::fmt::{Debug, Display};
 macro_rules! dss_call {
     ($routine:ident ($($arg: tt)*)) => {
         {
-            let code = $routine($($arg)*);
-            if code != MKL_DSS_SUCCESS {
-                return Err(Error::new(ErrorCode::from_return_code(code), stringify!($routine)));
-            }
+            let result: Result<(), Error> = {
+                let code = $routine($($arg)*);
+                if code == MKL_DSS_SUCCESS {
+                    Ok(())
+                } else {
+                    Err(Error::new(ErrorCode::from_return_code(code), stringify!($routine)))
+                }
+            };
+            result
         }
     }
 }
@@ -180,8 +180,34 @@ impl Handle {
         let mut handle = null_mut();
         unsafe {
             dss_call! { dss_create_(&mut handle, &options) }
-        }
+        }?;
         Ok(Self { handle })
+    }
+
+    fn get_statistics(&mut self) -> SolverStatistics {
+        let reorder_str = CStr::from_bytes_with_nul(b"ReorderTime\0").unwrap();
+        let factor_str = CStr::from_bytes_with_nul(b"FactorTime\0").unwrap();
+        let solve_str = CStr::from_bytes_with_nul(b"SolveTime\0").unwrap();
+
+        // SAFETY: The output buffer must be large enough to accommodate outputs for all
+        // options that we require. This has to be checked with MKL docs, since
+        // it might write more info to the buffer than we need right now.
+        // For now we use a much too large buffer to hopefully help avoid any undefined behavior
+        // due to, for example, MKL adding additional outputs for the same strings in the future
+        // (that would be terrible, but given the state of the MKL library I wouldn't put
+        // it past them).
+        let mut output = [0.0f64; 64];
+        SolverStatistics {
+            reorder_time: unsafe { dss_call!(dss_statistics_(&mut self.handle, &MKL_DSS_DEFAULTS, reorder_str.as_ptr(), output.as_mut_ptr())) }
+                .ok()
+                .map(|_| output[0]),
+            factor_time: unsafe { dss_call!(dss_statistics_(&mut self.handle, &MKL_DSS_DEFAULTS, factor_str.as_ptr(), output.as_mut_ptr())) }
+                .ok()
+                .map(|_| output[0]),
+            solve_time: unsafe { dss_call!(dss_statistics_(&mut self.handle, &MKL_DSS_DEFAULTS, solve_str.as_ptr(), output.as_mut_ptr())) }
+                .ok()
+                .map(|_| output[0]),
+        }
     }
 }
 
@@ -197,6 +223,19 @@ impl Drop for Handle {
             }
         }
     }
+}
+
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+/// Statistics, such as timing.
+///
+/// In general, statistics are only provided for completed phases, in which case the statistic
+/// corresponding to the most recent execution of the phase is given.
+pub struct SolverStatistics {
+    pub reorder_time: Option<f64>,
+    pub factor_time: Option<f64>,
+    pub solve_time: Option<f64>,
+    // determinant_time: Option<f64>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -324,7 +363,7 @@ where
                     columns.as_ptr(),
                     &(nnz as MKL_INT),
             ) }
-        }
+        }?;
 
         let reorder_opts;
         if options.parallel_reorder {
@@ -334,7 +373,7 @@ where
         }
         unsafe {
             dss_call! { dss_reorder_(&mut handle.handle, &reorder_opts, null()) }
-        };
+        }?;
 
         let mut factorization = Solver {
             handle,
@@ -362,7 +401,7 @@ where
                 &opts,
                 values.as_ptr() as *const c_void,
             ) }
-        };
+        }?;
         Ok(())
     }
 
@@ -395,7 +434,7 @@ where
                     solution.as_mut_ptr() as *mut c_void,
                 )
             }
-        };
+        }?;
         Ok(())
     }
 
@@ -421,7 +460,7 @@ where
                     solution.as_mut_ptr() as *mut c_void,
                 )
             }
-        };
+        }?;
         Ok(())
     }
 
@@ -447,7 +486,7 @@ where
                     solution.as_mut_ptr() as *mut c_void,
                 )
             }
-        };
+        }?;
         Ok(())
     }
 
@@ -478,5 +517,10 @@ where
         let mut buffer = vec![T::zero_element(); rhs.len()];
         self.solve_into(&mut solution, &mut buffer, rhs)?;
         Ok(solution)
+    }
+
+    /// Return statistics on the solver phases.
+    pub fn get_statistics(&mut self) -> SolverStatistics {
+        self.handle.get_statistics()
     }
 }
