@@ -16,7 +16,7 @@ use mkl_sys::{
     MKL_DSS_SUCCESS, MKL_DSS_TERM_LVL_ERR, MKL_DSS_TOO_FEW_VALUES, MKL_DSS_TOO_MANY_VALUES,
     MKL_DSS_VALUES_ERR, MKL_DSS_MSG_LVL_INFO, MKL_DSS_MSG_LVL_WARNING, MKL_DSS_MSG_LVL_ERROR, MKL_DSS_MSG_LVL_FATAL
 };
-use std::fmt::{Debug, Display};
+use std::fmt::{Debug, Display, Formatter};
 
 /// Calls the given DSS function, noting its error code and upon a non-success result,
 /// returns an appropriate error.
@@ -306,6 +306,38 @@ impl SolverOptions {
     }
 }
 
+/// An error returned by [`Solver`].
+#[derive(Debug)]
+pub enum SolverError {
+    /// An error occurred while defining the structure of the matrix.
+    DefineStructure(Error),
+    /// An error occured during symbolic factorization / reordering.
+    Reorder(Error),
+    /// An error occured during numerical factorization.
+    Factor(Error),
+    /// An error occured during a solve stage.
+    Solve(Error),
+    /// An error occured in an MKL function not covered by the other variants.
+    OtherMklRoutine(Error)
+}
+
+impl Display for SolverError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SolverError::DefineStructure(err) =>
+                write!(f, "An error occurred while defining the matrix structure. Error: {err}"),
+            SolverError::Reorder(err) =>
+                write!(f, "An error occurred during symbolic factorization. Error: {err}"),
+            SolverError::Factor(err) =>
+                write!(f, "An error occurred during numerical factorization. Error: {err}"),
+            SolverError::Solve(err) =>
+                write!(f, "An error occurred during the solve phase. Error: {err}"),
+            SolverError::OtherMklRoutine(err) =>
+                write!(f, "An error occurred in an MKL routine. Error: {err}"),
+        }
+    }
+}
+
 pub struct Solver<T> {
     handle: Handle,
     marker: PhantomData<T>,
@@ -331,7 +363,7 @@ where
         matrix: &SparseMatrix<T>,
         definiteness: Definiteness,
         options: &SolverOptions,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, SolverError> {
         let row_ptr = matrix.row_offsets();
         let columns = matrix.columns();
         let values = matrix.values();
@@ -349,7 +381,8 @@ where
         let create_opts = MKL_DSS_DEFAULTS
             + MKL_DSS_ZERO_BASED_INDEXING
             + options.message_level.to_mkl_int();
-        let mut handle = Handle::create(create_opts)?;
+        let mut handle = Handle::create(create_opts)
+            .map_err(SolverError::OtherMklRoutine)?;
 
         let define_opts = structure.to_mkl_opt();
         unsafe {
@@ -363,7 +396,7 @@ where
                     columns.as_ptr(),
                     &(nnz as MKL_INT),
             ) }
-        }?;
+        }.map_err(SolverError::DefineStructure)?;
 
         let reorder_opts;
         if options.parallel_reorder {
@@ -373,7 +406,7 @@ where
         }
         unsafe {
             dss_call! { dss_reorder_(&mut handle.handle, &reorder_opts, null()) }
-        }?;
+        }.map_err(SolverError::Reorder)?;
 
         let mut factorization = Solver {
             handle,
@@ -386,11 +419,11 @@ where
     }
 
     /// Factors with default options.
-    pub fn try_factor(matrix: &SparseMatrix<T>, definiteness: Definiteness) -> Result<Self, Error> {
+    pub fn try_factor(matrix: &SparseMatrix<T>, definiteness: Definiteness) -> Result<Self, SolverError> {
         Self::try_factor_with_opts(matrix, definiteness, &SolverOptions::default())
     }
 
-    pub fn refactor(&mut self, values: &[T], definiteness: Definiteness) -> Result<(), Error> {
+    pub fn refactor(&mut self, values: &[T], definiteness: Definiteness) -> Result<(), SolverError> {
         // TODO: Part of error?
         assert_eq!(values.len(), self.nnz);
 
@@ -401,7 +434,7 @@ where
                 &opts,
                 values.as_ptr() as *const c_void,
             ) }
-        }?;
+        }.map_err(SolverError::Factor)?;
         Ok(())
     }
 
