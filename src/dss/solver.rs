@@ -338,6 +338,14 @@ impl Display for SolverError {
     }
 }
 
+impl std::error::Error for SolverError {
+    fn cause(&self) -> Option<&dyn std::error::Error> {
+        match self {
+            SolverError::DefineStructure(err) | SolverError::Reorder(err) | SolverError::Factor(err) | SolverError::Solve(err) | SolverError::OtherMklRoutine(err) => Some(err),
+        }
+    }
+}
+
 pub struct Solver<T> {
     handle: Handle,
     marker: PhantomData<T>,
