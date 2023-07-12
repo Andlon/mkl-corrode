@@ -22,9 +22,9 @@ where
 }
 
 pub fn transmute_identical_slice_mut<T, U>(slice: &mut [T]) -> Option<&mut [U]>
-    where
-        T: 'static,
-        U: 'static,
+where
+    T: 'static,
+    U: 'static,
 {
     if is_same_type::<T, U>() {
         Some(unsafe { transmute(slice) })

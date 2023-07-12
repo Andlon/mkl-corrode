@@ -1,14 +1,12 @@
 use crate::util::{is_same_type, transmute_identical_slice, transmute_identical_slice_mut};
 use mkl_sys::{
-    matrix_descr, mkl_sparse_d_create_csr, mkl_sparse_destroy,
-    mkl_sparse_d_mv, mkl_sparse_set_mv_hint,
-    sparse_diag_type_t, sparse_fill_mode_t, sparse_matrix_t, sparse_matrix_type_t,
-    sparse_operation_t, mkl_sparse_optimize,
-    MKL_INT,
+    matrix_descr, mkl_sparse_d_create_csr, mkl_sparse_d_mv, mkl_sparse_destroy,
+    mkl_sparse_optimize, mkl_sparse_set_mv_hint, sparse_diag_type_t, sparse_fill_mode_t,
+    sparse_matrix_t, sparse_matrix_type_t, sparse_operation_t, MKL_INT,
 };
-use std::marker::PhantomData;
-use std::ptr::{null_mut};
 use std::convert::TryFrom;
+use std::marker::PhantomData;
+use std::ptr::null_mut;
 
 use crate::SupportedScalar;
 use mkl_sys::sparse_status_t;
@@ -125,17 +123,25 @@ where
         row_begin: &'a [MKL_INT],
         row_end: &'a [MKL_INT],
         columns: &'a [MKL_INT],
-        values: &'a [T]
+        values: &'a [T],
     ) -> Result<Self, SparseStatusError> {
-        assert_eq!(row_begin.len(), rows, "row_begin length and rows must be equal");
+        assert_eq!(
+            row_begin.len(),
+            rows,
+            "row_begin length and rows must be equal"
+        );
         assert_eq!(row_end.len(), rows, "row_end length and rows must be equal");
-        assert_eq!(columns.len(), values.len(), "columns and values must have equal length");
+        assert_eq!(
+            columns.len(),
+            values.len(),
+            "columns and values must have equal length"
+        );
 
         assert_eq!(row_begin.first().unwrap_or(&0), &0);
         assert!(row_end.first().unwrap_or(&0) >= &0);
 
-        let is_monotonic = |slice: &[_]| (1 .. slice.len())
-            .all(|row_idx| slice[row_idx] >= slice[row_idx - 1]);
+        let is_monotonic =
+            |slice: &[_]| (1..slice.len()).all(|row_idx| slice[row_idx] >= slice[row_idx - 1]);
         assert!(is_monotonic(row_begin));
         assert!(is_monotonic(row_end));
 
@@ -145,12 +151,14 @@ where
 
         // TODO: Do column indices in each row need to be sorted? I don't think so...
         // MKL docs don't say that in the description of the format, at least.
-        assert!(columns.iter().all(|index| index >= &0 && (*index as usize) < cols),
-                "column indices must lie in the interval [0, cols)");
+        assert!(
+            columns
+                .iter()
+                .all(|index| index >= &0 && (*index as usize) < cols),
+            "column indices must lie in the interval [0, cols)"
+        );
 
-        unsafe {
-            Self::from_raw_csr_data(rows, cols, row_begin, row_end, columns, values)
-        }
+        unsafe { Self::from_raw_csr_data(rows, cols, row_begin, row_end, columns, values) }
     }
 
     // TODO: Apparently this routine is only supported for BSR according to Intel docs?
@@ -218,7 +226,7 @@ where
                 rows,
                 cols,
                 handle,
-                nnz: values.len()
+                nnz: values.len(),
             })
         } else {
             // TODO: Implement more types
@@ -228,11 +236,12 @@ where
 
     // TODO: Is it correct that this does not take self by mut ref? I think it's tantamount
     // to MKL just modifying some internal cached variables, but not the data itself...?
-    pub fn set_mv_hint(&self, operation: SparseOperation,
-                       description: &MatrixDescription,
-                       expected_calls: usize)
-        -> Result<(), SparseStatusError>
-    {
+    pub fn set_mv_hint(
+        &self,
+        operation: SparseOperation,
+        description: &MatrixDescription,
+        expected_calls: usize,
+    ) -> Result<(), SparseStatusError> {
         if is_same_type::<T, f64>() {
             unsafe {
                 let status = mkl_sparse_set_mv_hint(
@@ -240,7 +249,7 @@ where
                     operation.to_mkl_value(),
                     description.to_mkl_descr(),
                     MKL_INT::try_from(expected_calls)
-                        .expect("TODO: How to deal with numbers that don't fit in MKL_INT?")
+                        .expect("TODO: How to deal with numbers that don't fit in MKL_INT?"),
                 );
                 SparseStatusError::new_result(status, "mkl_sparse_set_mv_hint")?;
                 Ok(())
@@ -266,7 +275,7 @@ where
 pub enum SparseOperation {
     NonTranspose,
     Transpose,
-    ConjugateTranspose
+    ConjugateTranspose,
 }
 
 impl SparseOperation {
@@ -274,27 +283,34 @@ impl SparseOperation {
         match self {
             Self::NonTranspose => sparse_operation_t::SPARSE_OPERATION_NON_TRANSPOSE,
             Self::Transpose => sparse_operation_t::SPARSE_OPERATION_TRANSPOSE,
-            Self::ConjugateTranspose => sparse_operation_t::SPARSE_OPERATION_CONJUGATE_TRANSPOSE
+            Self::ConjugateTranspose => sparse_operation_t::SPARSE_OPERATION_CONJUGATE_TRANSPOSE,
         }
     }
 }
 
 /// y <- alpha * op(matrix) * x + beta * y
-pub fn spmv_csr<T>(operation: SparseOperation,
-                   alpha: T,
-                   matrix: &CsrMatrixHandle<T>,
-                   description: &MatrixDescription,
-                   x: &[T],
-                   beta: T,
-                   y: &mut [T])
--> Result<(), SparseStatusError>
+pub fn spmv_csr<T>(
+    operation: SparseOperation,
+    alpha: T,
+    matrix: &CsrMatrixHandle<T>,
+    description: &MatrixDescription,
+    x: &[T],
+    beta: T,
+    y: &mut [T],
+) -> Result<(), SparseStatusError>
 where
-    T: SupportedScalar
+    T: SupportedScalar,
 {
-    assert_eq!(y.len(), matrix.rows(),
-               "Number of rows of matrix must be identical to length of y.");
-    assert_eq!(x.len(), matrix.cols(),
-               "Number of columns of matrix must be identical to length of y.");
+    assert_eq!(
+        y.len(),
+        matrix.rows(),
+        "Number of rows of matrix must be identical to length of y."
+    );
+    assert_eq!(
+        x.len(),
+        matrix.cols(),
+        "Number of columns of matrix must be identical to length of y."
+    );
     if is_same_type::<T, f64>() {
         unsafe {
             let status = mkl_sparse_d_mv(
@@ -304,7 +320,7 @@ where
                 description.to_mkl_descr(),
                 transmute_identical_slice(x).unwrap().as_ptr(),
                 beta.try_as_f64().unwrap(),
-                transmute_identical_slice_mut(y).unwrap().as_mut_ptr()
+                transmute_identical_slice_mut(y).unwrap().as_mut_ptr(),
             );
             SparseStatusError::new_result(status, "mkl_sparse_d_mv")?;
             Ok(())

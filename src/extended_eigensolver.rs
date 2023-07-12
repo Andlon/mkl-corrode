@@ -141,8 +141,8 @@ pub fn sparse_svd<T>(
     description: &MatrixDescription,
     k: usize,
 ) -> Result<SvdResult<T>, SparseStatusError>
-    where
-        T: SupportedScalar,
+where
+    T: SupportedScalar,
 {
     // TODO: Check if k is not too large?
     let k_in = k as MKL_INT;
@@ -193,7 +193,7 @@ pub fn sparse_svd<T>(
             SingularVectorType::Left => {
                 left_vectors.truncate(k_out * matrix.rows());
                 result.left_vectors = Some(left_vectors);
-            },
+            }
             SingularVectorType::Right => {
                 right_vectors.truncate(k_out * matrix.cols());
                 result.right_vectors = Some(right_vectors);

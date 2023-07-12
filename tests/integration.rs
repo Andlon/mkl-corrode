@@ -4,8 +4,12 @@ use approx::assert_abs_diff_eq;
 
 use mkl_corrode::dss::Definiteness::Indefinite;
 use mkl_corrode::dss::MatrixStructure::NonSymmetric;
-use mkl_corrode::extended_eigensolver::{k_largest_eigenvalues, k_smallest_eigenvalues, sparse_svd, Which, SingularVectorType};
-use mkl_corrode::sparse::{CsrMatrixHandle, MatrixDescription, SparseMatrixType, spmv_csr, SparseOperation};
+use mkl_corrode::extended_eigensolver::{
+    k_largest_eigenvalues, k_smallest_eigenvalues, sparse_svd, SingularVectorType, Which,
+};
+use mkl_corrode::sparse::{
+    spmv_csr, CsrMatrixHandle, MatrixDescription, SparseMatrixType, SparseOperation,
+};
 use Definiteness::PositiveDefinite;
 use MatrixStructure::Symmetric;
 
@@ -115,7 +119,8 @@ fn csr_unsafe_construction_destruction() {
         &row_ptr[1..],
         &columns,
         &values,
-    ).unwrap();
+    )
+    .unwrap();
     drop(matrix);
 
     // Check that dropping the handle does not "destroy" the input data
@@ -142,7 +147,8 @@ fn basic_k_smallest_largest_eigenvalues() {
         &row_ptr[1..],
         &columns,
         &values,
-    ).unwrap();
+    )
+    .unwrap();
 
     let description = MatrixDescription::default().with_type(SparseMatrixType::General);
     let expected_eigvals = vec![2.94606902, 5.43309508, 10.6208359];
@@ -201,28 +207,30 @@ fn basic_sparse_svd() {
     let columns = [0, 1, 1, 2, 0, 2];
     let values = [10.0, -5.0, 5.0, 1.0, 2.0, 4.0];
     let matrix = CsrMatrixHandle::from_csr_data(
-            3,
-            3,
-            &row_ptr[..row_ptr.len() - 1],
-            &row_ptr[1..],
-            &columns,
-            &values,
-        ).unwrap();
+        3,
+        3,
+        &row_ptr[..row_ptr.len() - 1],
+        &row_ptr[1..],
+        &columns,
+        &values,
+    )
+    .unwrap();
 
     let description = MatrixDescription::default();
 
     // "All" eigenvalues
     {
-        let result = sparse_svd(Which::Largest,
-                                SingularVectorType::Left,
-                                &matrix,
-                                &description,
-                                3)
-            .unwrap();
+        let result = sparse_svd(
+            Which::Largest,
+            SingularVectorType::Left,
+            &matrix,
+            &description,
+            3,
+        )
+        .unwrap();
 
-        let expected_singular_values = vec![
-            3.155542242601061, 5.201796372629078, 11.575140070550471
-        ];
+        let expected_singular_values =
+            vec![3.155542242601061, 5.201796372629078, 11.575140070550471];
 
         let mut sorted_values = result.singular_values().to_vec();
         sorted_values.sort_by(|a, b| a.partial_cmp(&b).unwrap());
@@ -236,30 +244,41 @@ fn basic_sparse_svd() {
 
     // Get smallest eigenvalue
     {
-        let result = sparse_svd(Which::Smallest,
-                                SingularVectorType::Left,
-                                &matrix,
-                                &description,
-                                1)
-            .unwrap();
+        let result = sparse_svd(
+            Which::Smallest,
+            SingularVectorType::Left,
+            &matrix,
+            &description,
+            1,
+        )
+        .unwrap();
 
-        assert_abs_diff_eq!(result.singular_values()[0], 3.155542242601061, epsilon=1e-9);
+        assert_abs_diff_eq!(
+            result.singular_values()[0],
+            3.155542242601061,
+            epsilon = 1e-9
+        );
     }
 
     // Get largest eigenvalue
     {
-        let result = sparse_svd(Which::Largest,
-                                SingularVectorType::Left,
-                                &matrix,
-                                &description,
-                                1)
-            .unwrap();
+        let result = sparse_svd(
+            Which::Largest,
+            SingularVectorType::Left,
+            &matrix,
+            &description,
+            1,
+        )
+        .unwrap();
 
-        assert_abs_diff_eq!(result.singular_values()[0], 11.575140070550471, epsilon=1e-9);
+        assert_abs_diff_eq!(
+            result.singular_values()[0],
+            11.575140070550471,
+            epsilon = 1e-9
+        );
     }
 
     // TODO: Test singular vectors
-
 }
 
 #[test]
@@ -271,15 +290,17 @@ fn dss_solver_debug() {
     let values = [0.0];
 
     // Construct dummy matrix
-    let matrix = SparseMatrix::try_convert_from_csr(&row_ptr, &columns, &values, NonSymmetric)
-        .unwrap();
+    let matrix =
+        SparseMatrix::try_convert_from_csr(&row_ptr, &columns, &values, NonSymmetric).unwrap();
     let solver = Solver::try_factor(&matrix, Indefinite).unwrap();
 
     let mut debug_str = String::new();
     write!(&mut debug_str, "{:?}", solver).unwrap();
 
-    assert_eq!(debug_str,
-               "mkl_corrode::dss::solver::Solver<f64> { handle: \"<n/a>\", num_rows: 1, nnz: 1 }");
+    assert_eq!(
+        debug_str,
+        "mkl_corrode::dss::solver::Solver<f64> { handle: \"<n/a>\", num_rows: 1, nnz: 1 }"
+    );
 }
 
 #[test]
@@ -293,21 +314,36 @@ fn sparse_spmv_csr_plus_update() {
     let row_ptr = [0, 3, 5, 8, 10];
     let columns = [0, 2, 3, 0, 1, 1, 2, 3, 1, 3];
     let values = [10.0, 2.0, 7.0, 3.0, 6.0, 7.0, 9.0, 1.0, 2.0, 3.0];
-    let csr = CsrMatrixHandle::from_csr_data(4, 4,
-                                             &row_ptr[..row_ptr.len() - 1],
-                                             &row_ptr[1..], &columns, &values).unwrap();
+    let csr = CsrMatrixHandle::from_csr_data(
+        4,
+        4,
+        &row_ptr[..row_ptr.len() - 1],
+        &row_ptr[1..],
+        &columns,
+        &values,
+    )
+    .unwrap();
 
     let alpha = 2.0;
     let x = [3.0, -2.0, 1.0, 5.0];
     let beta = 3.0;
     let mut y = [2.0, 3.0, 1.0, -4.0];
     let description = MatrixDescription::default();
-    spmv_csr(SparseOperation::NonTranspose, alpha, &csr, &description, &x, beta, &mut y).unwrap();
+    spmv_csr(
+        SparseOperation::NonTranspose,
+        alpha,
+        &csr,
+        &description,
+        &x,
+        beta,
+        &mut y,
+    )
+    .unwrap();
 
-    assert_abs_diff_eq!(y[0], 140.0, epsilon=1e-14);
-    assert_abs_diff_eq!(y[1], 3.0, epsilon=1e-14);
-    assert_abs_diff_eq!(y[2], 3.0, epsilon=1e-14);
-    assert_abs_diff_eq!(y[3], 10.0, epsilon=1e-14);
+    assert_abs_diff_eq!(y[0], 140.0, epsilon = 1e-14);
+    assert_abs_diff_eq!(y[1], 3.0, epsilon = 1e-14);
+    assert_abs_diff_eq!(y[2], 3.0, epsilon = 1e-14);
+    assert_abs_diff_eq!(y[3], 10.0, epsilon = 1e-14);
 
     // TODO: Re-enable these tests if this ever becomes possible in the future.
     // Currently there seems to be no way to directly update values of a CSR matrix (only BSR).

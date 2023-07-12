@@ -1,4 +1,9 @@
-use mkl_sys::{_MKL_DSS_HANDLE_t, dss_create_, dss_define_structure_, dss_delete_, dss_factor_real_, dss_reorder_, dss_solve_real_, dss_statistics_, MKL_DSS_AUTO_ORDER, MKL_DSS_BACKWARD_SOLVE, MKL_DSS_DEFAULTS, MKL_DSS_DIAGONAL_SOLVE, MKL_DSS_FORWARD_SOLVE, MKL_DSS_INDEFINITE, MKL_DSS_METIS_OPENMP_ORDER, MKL_DSS_POSITIVE_DEFINITE, MKL_DSS_ZERO_BASED_INDEXING, MKL_INT};
+use mkl_sys::{
+    _MKL_DSS_HANDLE_t, dss_create_, dss_define_structure_, dss_delete_, dss_factor_real_,
+    dss_reorder_, dss_solve_real_, dss_statistics_, MKL_DSS_AUTO_ORDER, MKL_DSS_BACKWARD_SOLVE,
+    MKL_DSS_DEFAULTS, MKL_DSS_DIAGONAL_SOLVE, MKL_DSS_FORWARD_SOLVE, MKL_DSS_INDEFINITE,
+    MKL_DSS_METIS_OPENMP_ORDER, MKL_DSS_POSITIVE_DEFINITE, MKL_DSS_ZERO_BASED_INDEXING, MKL_INT,
+};
 use std::ffi::{c_void, CStr};
 use std::marker::PhantomData;
 use std::ptr::{null, null_mut};
@@ -9,12 +14,13 @@ use crate::SupportedScalar;
 use core::fmt;
 use mkl_sys::{
     MKL_DSS_COL_ERR, MKL_DSS_DIAG_ERR, MKL_DSS_FAILURE, MKL_DSS_I32BIT_ERR, MKL_DSS_INVALID_OPTION,
-    MKL_DSS_MSG_LVL_ERR, MKL_DSS_NOT_SQUARE, MKL_DSS_OOC_MEM_ERR, MKL_DSS_OOC_OC_ERR,
+    MKL_DSS_MSG_LVL_ERR, MKL_DSS_MSG_LVL_ERROR, MKL_DSS_MSG_LVL_FATAL, MKL_DSS_MSG_LVL_INFO,
+    MKL_DSS_MSG_LVL_WARNING, MKL_DSS_NOT_SQUARE, MKL_DSS_OOC_MEM_ERR, MKL_DSS_OOC_OC_ERR,
     MKL_DSS_OOC_RW_ERR, MKL_DSS_OPTION_CONFLICT, MKL_DSS_OUT_OF_MEMORY, MKL_DSS_REORDER1_ERR,
     MKL_DSS_REORDER_ERR, MKL_DSS_ROW_ERR, MKL_DSS_STATE_ERR, MKL_DSS_STATISTICS_INVALID_MATRIX,
     MKL_DSS_STATISTICS_INVALID_STATE, MKL_DSS_STATISTICS_INVALID_STRING, MKL_DSS_STRUCTURE_ERR,
     MKL_DSS_SUCCESS, MKL_DSS_TERM_LVL_ERR, MKL_DSS_TOO_FEW_VALUES, MKL_DSS_TOO_MANY_VALUES,
-    MKL_DSS_VALUES_ERR, MKL_DSS_MSG_LVL_INFO, MKL_DSS_MSG_LVL_WARNING, MKL_DSS_MSG_LVL_ERROR, MKL_DSS_MSG_LVL_FATAL
+    MKL_DSS_VALUES_ERR,
 };
 use std::fmt::{Debug, Display, Formatter};
 
@@ -198,15 +204,36 @@ impl Handle {
         // it past them).
         let mut output = [0.0f64; 64];
         SolverStatistics {
-            reorder_time: unsafe { dss_call!(dss_statistics_(&mut self.handle, &MKL_DSS_DEFAULTS, reorder_str.as_ptr(), output.as_mut_ptr())) }
-                .ok()
-                .map(|_| output[0]),
-            factor_time: unsafe { dss_call!(dss_statistics_(&mut self.handle, &MKL_DSS_DEFAULTS, factor_str.as_ptr(), output.as_mut_ptr())) }
-                .ok()
-                .map(|_| output[0]),
-            solve_time: unsafe { dss_call!(dss_statistics_(&mut self.handle, &MKL_DSS_DEFAULTS, solve_str.as_ptr(), output.as_mut_ptr())) }
-                .ok()
-                .map(|_| output[0]),
+            reorder_time: unsafe {
+                dss_call!(dss_statistics_(
+                    &mut self.handle,
+                    &MKL_DSS_DEFAULTS,
+                    reorder_str.as_ptr(),
+                    output.as_mut_ptr()
+                ))
+            }
+            .ok()
+            .map(|_| output[0]),
+            factor_time: unsafe {
+                dss_call!(dss_statistics_(
+                    &mut self.handle,
+                    &MKL_DSS_DEFAULTS,
+                    factor_str.as_ptr(),
+                    output.as_mut_ptr()
+                ))
+            }
+            .ok()
+            .map(|_| output[0]),
+            solve_time: unsafe {
+                dss_call!(dss_statistics_(
+                    &mut self.handle,
+                    &MKL_DSS_DEFAULTS,
+                    solve_str.as_ptr(),
+                    output.as_mut_ptr()
+                ))
+            }
+            .ok()
+            .map(|_| output[0]),
         }
     }
 }
@@ -260,7 +287,7 @@ pub enum MessageLevel {
     Info,
     Warning,
     Error,
-    Fatal
+    Fatal,
 }
 
 impl MessageLevel {
@@ -302,7 +329,10 @@ impl SolverOptions {
     /// By default, only "Fatal" messages will be printed to stdout/stderr. Increasing the
     /// message level may cause the DSS solver to produce more output.
     pub fn message_level(self, message_level: MessageLevel) -> Self {
-        Self { message_level, .. self }
+        Self {
+            message_level,
+            ..self
+        }
     }
 }
 
@@ -318,22 +348,30 @@ pub enum SolverError {
     /// An error occured during a solve stage.
     Solve(Error),
     /// An error occured in an MKL function not covered by the other variants.
-    OtherMklRoutine(Error)
+    OtherMklRoutine(Error),
 }
 
 impl Display for SolverError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            SolverError::DefineStructure(err) =>
-                write!(f, "An error occurred while defining the matrix structure. Error: {err}"),
-            SolverError::Reorder(err) =>
-                write!(f, "An error occurred during symbolic factorization. Error: {err}"),
-            SolverError::Factor(err) =>
-                write!(f, "An error occurred during numerical factorization. Error: {err}"),
-            SolverError::Solve(err) =>
-                write!(f, "An error occurred during the solve phase. Error: {err}"),
-            SolverError::OtherMklRoutine(err) =>
-                write!(f, "An error occurred in an MKL routine. Error: {err}"),
+            SolverError::DefineStructure(err) => write!(
+                f,
+                "An error occurred while defining the matrix structure. Error: {err}"
+            ),
+            SolverError::Reorder(err) => write!(
+                f,
+                "An error occurred during symbolic factorization. Error: {err}"
+            ),
+            SolverError::Factor(err) => write!(
+                f,
+                "An error occurred during numerical factorization. Error: {err}"
+            ),
+            SolverError::Solve(err) => {
+                write!(f, "An error occurred during the solve phase. Error: {err}")
+            }
+            SolverError::OtherMklRoutine(err) => {
+                write!(f, "An error occurred in an MKL routine. Error: {err}")
+            }
         }
     }
 }
@@ -341,7 +379,11 @@ impl Display for SolverError {
 impl std::error::Error for SolverError {
     fn cause(&self) -> Option<&dyn std::error::Error> {
         match self {
-            SolverError::DefineStructure(err) | SolverError::Reorder(err) | SolverError::Factor(err) | SolverError::Solve(err) | SolverError::OtherMklRoutine(err) => Some(err),
+            SolverError::DefineStructure(err)
+            | SolverError::Reorder(err)
+            | SolverError::Factor(err)
+            | SolverError::Solve(err)
+            | SolverError::OtherMklRoutine(err) => Some(err),
         }
     }
 }
@@ -386,11 +428,9 @@ where
         let num_rows = row_ptr.len() - 1;
         let num_cols = num_rows;
 
-        let create_opts = MKL_DSS_DEFAULTS
-            + MKL_DSS_ZERO_BASED_INDEXING
-            + options.message_level.to_mkl_int();
-        let mut handle = Handle::create(create_opts)
-            .map_err(SolverError::OtherMklRoutine)?;
+        let create_opts =
+            MKL_DSS_DEFAULTS + MKL_DSS_ZERO_BASED_INDEXING + options.message_level.to_mkl_int();
+        let mut handle = Handle::create(create_opts).map_err(SolverError::OtherMklRoutine)?;
 
         let define_opts = structure.to_mkl_opt();
         unsafe {
@@ -404,7 +444,8 @@ where
                     columns.as_ptr(),
                     &(nnz as MKL_INT),
             ) }
-        }.map_err(SolverError::DefineStructure)?;
+        }
+        .map_err(SolverError::DefineStructure)?;
 
         let reorder_opts;
         if options.parallel_reorder {
@@ -414,7 +455,8 @@ where
         }
         unsafe {
             dss_call! { dss_reorder_(&mut handle.handle, &reorder_opts, null()) }
-        }.map_err(SolverError::Reorder)?;
+        }
+        .map_err(SolverError::Reorder)?;
 
         let mut factorization = Solver {
             handle,
@@ -427,11 +469,18 @@ where
     }
 
     /// Factors with default options.
-    pub fn try_factor(matrix: &SparseMatrix<T>, definiteness: Definiteness) -> Result<Self, SolverError> {
+    pub fn try_factor(
+        matrix: &SparseMatrix<T>,
+        definiteness: Definiteness,
+    ) -> Result<Self, SolverError> {
         Self::try_factor_with_opts(matrix, definiteness, &SolverOptions::default())
     }
 
-    pub fn refactor(&mut self, values: &[T], definiteness: Definiteness) -> Result<(), SolverError> {
+    pub fn refactor(
+        &mut self,
+        values: &[T],
+        definiteness: Definiteness,
+    ) -> Result<(), SolverError> {
         // TODO: Part of error?
         assert_eq!(values.len(), self.nnz);
 
@@ -442,7 +491,8 @@ where
                 &opts,
                 values.as_ptr() as *const c_void,
             ) }
-        }.map_err(SolverError::Factor)?;
+        }
+        .map_err(SolverError::Factor)?;
         Ok(())
     }
 

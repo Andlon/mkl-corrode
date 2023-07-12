@@ -201,7 +201,12 @@ where
             self.new_row_offsets.push(new_offset);
         }
 
-        fn visit_column(&mut self, i: MKL_INT, j: MKL_INT, v_j: &X) -> Result<(), SparseMatrixDataError> {
+        fn visit_column(
+            &mut self,
+            i: MKL_INT,
+            j: MKL_INT,
+            v_j: &X,
+        ) -> Result<(), SparseMatrixDataError> {
             let should_push = j >= i || (j < i && self.keep_lower_tri);
             if should_push {
                 self.push_val(j, *v_j);
@@ -209,7 +214,10 @@ where
             Ok(())
         }
 
-        fn visit_missing_diagonal_entry(&mut self, i: MKL_INT) -> Result<(), SparseMatrixDataError> {
+        fn visit_missing_diagonal_entry(
+            &mut self,
+            i: MKL_INT,
+        ) -> Result<(), SparseMatrixDataError> {
             self.push_val(i, X::zero_element());
             Ok(())
         }
@@ -271,7 +279,12 @@ where
         }
 
         impl<X: SupportedScalar> CsrProcessor<X> for CsrCheck {
-            fn visit_column(&mut self, i: MKL_INT, j: MKL_INT, _: &X) -> Result<(), SparseMatrixDataError> {
+            fn visit_column(
+                &mut self,
+                i: MKL_INT,
+                j: MKL_INT,
+                _: &X,
+            ) -> Result<(), SparseMatrixDataError> {
                 if !self.allow_lower_tri && j < i {
                     Err(SparseMatrixDataError::UnexpectedLowerTriangularPart)
                 } else {
